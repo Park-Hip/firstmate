@@ -337,11 +337,13 @@ MODEL=$(printf '%s' "$SNAP" | jq \
     (tostring | gsub("\\s+"; " ") | if (length > $n) then (.[:$n] + "…") else . end) end;
   def live_captain_call:
     (.aged_undated_hold != true)
+    and (.explicit_deferred_marker != true)
     and ((.deferred_marker != true)
-         or ((.hold_until // null) != null and .hold_until <= $today));
-  def projected_undated_hold:
-    (.hold_until == null)
-    and (.deferred_marker == true or .aged_undated_hold == true);
+         or (.parked_style_marker == true
+             and (.hold_until // null) != null and .hold_until <= $today));
+  def projected_deferred_hold:
+    (.deferred_marker == true or .aged_undated_hold == true)
+    and (live_captain_call | not);
   def hold_gate_reason:
     if .aged_undated_hold == true and .hold_age_days != null then
       ("held " + (.hold_age_days | tostring) + "d: " + (.hold_reason // .blocked_reason // "-"))
@@ -473,7 +475,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | as_gate("(main)") ]
      + [ .backlog.records[]
          | select($all_decisions == 0 and .structured and .captain_actionable == true
-                  and projected_undated_hold)
+                  and projected_deferred_hold)
          | as_gate("(main)") ]
      + [ (.secondmate_current.records // [])[] as $m
          | select($m.provenance.selected == "structured-home")
@@ -486,7 +488,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | select($m.provenance.selected == "structured-home")
          | $m.queued[]?
          | select($all_decisions == 0 and .captain_actionable == true
-                  and projected_undated_hold)
+                  and projected_deferred_hold)
          | as_gate($m.id) ]) as $gates_all
   | ([ .scout_reports[]
        | . as $r

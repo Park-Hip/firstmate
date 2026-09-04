@@ -523,10 +523,11 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
           | .aged_undated_hold =
               (.hold_kind == "captain" and .hold_until == null
                and .hold_age_days != null and .hold_age_days >= $age_days)
-          | .deferred_marker =
+          | .explicit_deferred_marker =
               (((.hold_reason // "") | explicitly_deferred)
-               or ((.hold_reason // "") | parked_style_reason)
                or ((.body_excerpt // "") | explicitly_deferred))
+          | .parked_style_marker = ((.hold_reason // "") | parked_style_reason)
+          | .deferred_marker = (.explicit_deferred_marker or .parked_style_marker)
         else . end)
     | del(.section,.order)
   ' < "$backlog"
@@ -952,6 +953,8 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
             reason:(.hold_reason | trunc(160)),
             hold_until:(.hold_until // null),
             deferred_marker:(.deferred_marker // false),
+            explicit_deferred_marker:(.explicit_deferred_marker // false),
+            parked_style_marker:(.parked_style_marker // false),
             aged_undated_hold:(.aged_undated_hold // false),
             hold_age_days:(.hold_age_days // null),source:"backlog"} ]) as $captain_holds_all
     | ([ $backlog.records[]? | select(.state == "done" and .structured and .hold_kind != "captain")
@@ -1061,6 +1064,8 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
           hold_kind:((.hold_kind // null) | if . == null then null else trunc(40) end),
           hold_until:((.hold_until // null) | if . == null then null else trunc(40) end),
           deferred_marker:(.deferred_marker // false),
+          explicit_deferred_marker:(.explicit_deferred_marker // false),
+          parked_style_marker:(.parked_style_marker // false),
           aged_undated_hold:(.aged_undated_hold // false),
           hold_age_days:(.hold_age_days // null),
           captain_actionable:(.captain_actionable // false),

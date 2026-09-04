@@ -1181,6 +1181,8 @@ test_undated_hold_phrasing_and_aging_projection() {
 - [ ] mate-parked - Remote parked call (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
 - [ ] mate-future-parked - Remote parked call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-08-01)
 - [ ] mate-due-parked - Remote parked call now due (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-07-11)
+- [ ] mate-due-not-required - Remote moot call now due (repo: firstmate) (kind: captain) (hold: choose a remote route) (hold-kind: captain) (hold-until: 2026-07-11)
+  NOT REQUIRED - the remote decision is moot.
 - [ ] mate-aged - Remote aged call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a remote route) (hold-kind: captain)
   Captain hold set: 2026-06-01T00:00:00Z
 
@@ -1193,6 +1195,7 @@ EOF
 - [ ] parked-hold - Parked style call (repo: firstmate) (kind: ship) (since 2026-07-10) (hold: not urgent) (hold-kind: captain)
 - [ ] future-parked - Parked style call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-08-01)
 - [ ] due-parked - Parked style call now due (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-07-11)
+- [ ] due-superseded - Superseded call now due (repo: firstmate) (kind: captain) (hold: SUPERSEDED) (hold-kind: captain) (hold-until: 2026-07-11)
 - [ ] aged-call - Aged genuine call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a sample route) (hold-kind: captain)
   Captain hold set: 2026-06-01T00:00:00Z
 - [ ] recent-call - Recent genuine call (repo: firstmate) (kind: captain) (since 2026-07-10) (hold: choose a sample route) (hold-kind: captain)
@@ -1228,8 +1231,10 @@ EOF
     (.decisions_open | any(.[]; .id == "recent-call"))
       and (.decisions_open | any(.[]; .id == "due-parked"))
       and (.decisions_open | any(.[]; .id == "future-parked") | not)
+      and (.decisions_open | any(.[]; .id == "due-superseded") | not)
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-parked"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-future-parked") | not)
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-not-required") | not)
       and (.decisions_open | any(.[]; .id == "contextual-call"))
       and (.decisions_open | any(.[]; .id == "contextual-not-urgent"))
       and (.decisions_open | any(.[]; .id == "contextual-comma" and .summary == "Comma context is not a deferral: not urgent, choose the launch route now"))
@@ -1243,23 +1248,30 @@ EOF
       and (.gates | any(.[]; .id == "parked-hold" and .reason == "not urgent"))
       and (.gates | any(.[]; .id == "future-parked" and .reason == "until 2026-08-01: parked"))
       and (.gates | any(.[]; .id == "due-parked") | not)
+      and (.gates | any(.[]; .id == "due-superseded" and .reason == "SUPERSEDED"))
       and (.gates | any(.[]; .id == "aged-call" and (.reason | startswith("held 40d"))))
       and (.gates | any(.[]; .id == "legacy-old-hold" and (.reason | startswith("held 40d"))))
       and (.gates | any(.[]; .id == "mate-parked" and .owner == "aging-mate" and .reason == "parked"))
       and (.gates | any(.[]; .id == "mate-future-parked" and .owner == "aging-mate" and .reason == "until 2026-08-01: parked"))
       and (.gates | any(.[]; .id == "mate-due-parked" and .owner == "aging-mate") | not)
+      and (.gates | any(.[]; .id == "mate-due-not-required" and .owner == "aging-mate" and .reason == "choose a remote route"))
       and (.gates | any(.[]; .id == "mate-aged" and .owner == "aging-mate" and (.reason | startswith("held 40d"))))
       and (.gates | any(.[]; .id == "recent-call") | not)
-      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 5"))
+      and ([.decisions_open[].id, .gates[].id]
+           | contains(["due-parked", "due-superseded", "future-parked", "parked-hold", "aged-call",
+                       "aging-mate/mate-due-parked", "mate-due-not-required", "mate-future-parked", "mate-parked", "mate-aged"]))
+      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 7"))
   ' >/dev/null || fail "parked-style and aged undated holds must leave Captain's Call: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions)
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.[]; .id == "parked-hold"))
       and (.decisions_open | any(.[]; .id == "aged-call"))
       and (.decisions_open | any(.[]; .id == "due-parked"))
+      and (.decisions_open | any(.[]; .id == "due-superseded"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-parked"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-aged"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-not-required"))
       and (.decisions_open | any(.[]; .id == "recent-call"))
       and (.decisions_open | any(.[]; .id == "contextual-call"))
       and (.decisions_open | any(.[]; .id == "contextual-not-urgent"))
@@ -1270,7 +1282,8 @@ EOF
       and (.decisions_open | any(.[]; .id == "reheld-current-call"))
       and (.decisions_open | any(.[]; .id == "legacy-old-hold"))
       and (.gates | any(.[]; .id == "parked-hold" or .id == "aged-call" or .id == "legacy-old-hold"
-          or .id == "mate-parked" or .id == "mate-aged" or .id == "mate-due-parked") | not)
+          or .id == "due-superseded" or .id == "mate-parked" or .id == "mate-aged"
+          or .id == "mate-due-parked" or .id == "mate-due-not-required") | not)
       and (.gates | any(.[]; .id == "future-parked" and .reason == "until 2026-08-01: parked"))
       and (.gates | any(.[]; .id == "mate-future-parked" and .owner == "aging-mate" and .reason == "until 2026-08-01: parked"))
   ' >/dev/null || fail "--all-decisions must reveal parked-style and aged holds without duplicating their gates: $json"
