@@ -1272,7 +1272,7 @@ EOF
       and ([.decisions_open[].id, .gates[].id]
            | contains(["due-parked", "due-superseded", "future-parked", "parked-hold", "blocked-parked", "aged-call",
                        "aging-mate/mate-due-parked", "mate-due-not-required", "mate-future-parked", "mate-parked", "mate-blocked-parked", "mate-aged"]))
-      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 7"))
+      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 11"))
   ' >/dev/null || fail "parked-style and aged undated holds must leave Captain's Call: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions)
   printf '%s' "$json" | jq -e '
@@ -1307,6 +1307,26 @@ EOF
       and (.gates | any(.[]; .id == "aged-call") | not)
   ' >/dev/null || fail "raising the age threshold must restore an undated hold to Captain's Call: $json"
   pass "parked-style and aged undated captain holds project to Charted Next/omitted, not live Captain's Call"
+}
+
+test_blocked_deferred_hold_has_concrete_disclosure() {
+  local home fakebin json
+  home=$(make_home blocked-deferred-disclosure)
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] only-blocked-parked - Blocked parked call blocked-by: missing-blocker (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  json=$(run "$home" "$fakebin" --json)
+  printf '%s' "$json" | jq -e '
+    (.gates | any(.id == "only-blocked-parked" and .blocked_by == "missing-blocker" and .reason == "parked"))
+      and (.omitted | any(.surface == "captain holds marked deferred, superseded, or aged: 1"))
+  ' >/dev/null || fail "a lone blocked deferred hold lacked its concrete disclosure: $json"
+  pass "a blocked deferred hold is counted in its concrete omission disclosure"
 }
 
 test_include_prs_is_the_only_fetch_path() {
@@ -2782,6 +2802,7 @@ test_perl_fallback_bounds_github_call
 test_section_caps_and_expansion_flags
 test_collapsed_captain_call_deferral_and_landed
 test_undated_hold_phrasing_and_aging_projection
+test_blocked_deferred_hold_has_concrete_disclosure
 test_pr_repository_cap_and_expansion
 test_per_repository_pr_cap_is_disclosed
 test_projection_and_toon_fail_closed

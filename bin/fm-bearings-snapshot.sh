@@ -449,11 +449,15 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | {id:($m.id + "/" + .id),key,verb,
             summary:(((.summary // .id) + ": " + (.reason // "captain decision pending")) | trunc(90)),owner:$m.id} ]) as $decisions_all
   | ([ .backlog.records[]
-         | select(.structured and .captain_actionable == true
+         | . as $record
+         | select(.structured and .hold_kind == "captain"
+                  and (.state == "queued" or
+                       (.state == "in_flight" and .current_role == "held"
+                        and ($working_ids | index($record.id) | not)))
                   and (.deferred_marker == true or .aged_undated_hold == true)
                   and (live_captain_call | not)) ]
-     + [ (.secondmate_current.records // [])[] | .decisions_open[]?
-         | select(.source == "backlog" and .verb == "captain-hold"
+     + [ (.secondmate_current.records // [])[] | .queued[]?
+         | select(.hold_kind == "captain"
                   and (.deferred_marker == true or .aged_undated_hold == true)
                   and (live_captain_call | not)) ]
      | length) as $decisions_marked_deferred
