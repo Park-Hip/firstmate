@@ -42,14 +42,12 @@ Board answers are acted on later under the normal authority rules; this skill's 
    Only pass `--include-prs` when the captain asks for live GitHub PR enrichment.
    For registered secondmates, use the snapshot's structured-home classification and provenance.
    A parent event or bounded terminal contradiction is fallback evidence, never authority over readable structured home state.
-   A decision is simply a task held for the captain (`captain-hold-lifecycle`); every due, unblocked captain-held task is canonically actionable whatever its kind, before the presentation-only filters below.
-   A captain hold deferred by date sits under `gates` with its `until <date>:` reason until it is due.
-   Once the date arrives, a complete parked-style reason becomes live again, but an explicit deferred, superseded, or not-required marker remains gated regardless of date.
-   An actionable undated hold whose reason or bounded body excerpt carries an explicit marker, or whose complete reason is a parked-style marker, leaves Captain's Call for a Charted Next gate with an `omitted` disclosure.
-   Contextual parked-style wording does not suppress a live decision.
-   A deferred hold that is also blocked remains a disclosed Charted Next gate rather than disappearing from both buckets.
-   An undated hold aged past the configured snapshot threshold likewise leaves Captain's Call for an age-labelled Charted Next gate; these are only presentation safety nets, and re-holding with `--until` remains the durable deferral.
-   Use `--all-decisions` to reveal every hold hidden by either presentation hint, including blocked holds, removing each revealed safety gate from Charted Next so the buckets remain exclusive; other non-actionable holds remain gated, and cross-home visibility remains subject to the snapshot's documented summary bounds.
+   A decision is simply a task held for the captain (`captain-hold-lifecycle`), whatever its kind.
+   The canonical snapshot assigns every captain hold exactly one bucket from structured fields only: `blocked` when any blocker is unresolved, else `dated` while `hold_until` is in the future, else `aged` when an undated hold has reached the configured age threshold, else `live`.
+   Never use hold-reason or body prose to classify or place a decision.
+   A `live` hold appears in Captain's Call; `blocked`, `dated`, and `aged` holds appear as disclosed Charted Next gates stating their structured reason.
+   Use `--all-decisions` to reveal every captain hold available within the bounded snapshot and remove each revealed gate from Charted Next so the buckets remain exclusive.
+   Aging is only a presentation safety net, and re-holding with `--until` remains the durable deferral.
    Do not scrape reports, visual-review artifacts, raw status-event tails, or visible conversation history to supplement current state.
    A queued item under `gates` only becomes "next work" when its blocker is gone and its time/date gate has arrived.
    Until then it stays queued with the reason.

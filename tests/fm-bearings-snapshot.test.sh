@@ -1164,7 +1164,7 @@ EOF
       and (.gates | any(.[]; .id == "external-gate"))
       and (.landed | any(.[]; .id == "shipped-work"))
       and (.landed | any(.[]; .id == "answered-call") | not)
-      and (.omitted | any(.[]; .surface | startswith("captain holds marked deferred")))
+      and (.omitted | any(.[]; .surface | startswith("captain holds bucketed blocked, dated, or aged")))
   ' >/dev/null || fail "the collapsed captain-call projection is wrong: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions --all-queued)
   printf '%s' "$json" | jq -e '
@@ -1280,7 +1280,7 @@ EOF
            | contains(["due-parked", "due-superseded", "future-parked", "parked-hold", "blocked-parked", "aged-call",
                        "aging-mate/mate-due-parked", "aging-mate/mate-due-not-required", "mate-future-parked",
                        "aging-mate/mate-parked", "mate-blocked-parked", "mate-aged"]))
-      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 7"))
+      and (.omitted | any(.[]; .surface == "captain holds bucketed blocked, dated, or aged: 7"))
   ' >/dev/null || fail "structured buckets must decide Captain's Call placement: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions)
   printf '%s' "$json" | jq -e '
@@ -1335,7 +1335,7 @@ EOF
   printf '%s' "$json" | jq -e '
     (.gates | any(.id == "only-blocked-parked" and .blocked_by == "missing-blocker"
                   and (.reason | startswith("blocked-by missing-blocker"))))
-      and (.omitted | any(.surface == "captain holds marked deferred, superseded, or aged: 1"))
+      and (.omitted | any(.surface == "captain holds bucketed blocked, dated, or aged: 1"))
   ' >/dev/null || fail "a lone blocked deferred hold lacked its concrete disclosure: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions)
   printf '%s' "$json" | jq -e '
@@ -1993,6 +1993,74 @@ seed_working_child() {  # <mate-home> <id> <doing> [repo]
     "harness=claude" "kind=ship" "mode=no-mistakes"
   record_claude_state "$mate/state" "$id" busy
   printf 'working: %s\n' "$doing" > "$mate/state/$id.status"
+}
+
+test_working_captain_holds_keep_their_bucket_surfaces() {
+  local home mate fakebin id summary json expanded
+  home=$(make_home working-hold-buckets)
+  mate="$TMP_ROOT/working-hold-buckets-mate"
+  : > "$home/data/secondmates.md"
+  make_valid_secondmate_home working-mate "$mate"
+  append_secondmate_registry "$home" working-mate "$mate"
+
+  for home in "$home" "$mate"; do
+    cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+- [ ] working-live - Working live call (repo: sample) (kind: captain) (hold: choose release route) (hold-kind: captain)
+  Captain hold set: 2026-07-10T00:00:00Z
+- [ ] working-blocked - Working blocked call blocked-by: missing-work (repo: sample) (kind: captain) (hold: choose blocked route) (hold-kind: captain)
+  Captain hold set: 2026-07-10T00:00:00Z
+- [ ] working-dated - Working dated call (repo: sample) (kind: captain) (hold: choose dated route) (hold-kind: captain) (hold-until: 2026-08-01)
+  Captain hold set: 2026-07-10T00:00:00Z
+- [ ] working-aged - Working aged call (repo: sample) (kind: captain) (hold: choose aged route) (hold-kind: captain)
+  Captain hold set: 2026-06-01T00:00:00Z
+
+## Queued
+
+## Done
+EOF
+    for id in working-live working-blocked working-dated working-aged; do
+      mkdir -p "$home/projects/$id"
+      fm_write_meta "$home/state/$id.meta" \
+        "window=firstmate:fm-$id" "worktree=$home/projects/$id" "project=sample" \
+        "harness=claude" "kind=ship" "mode=no-mistakes"
+      record_claude_state "$home/state" "$id" busy
+      printf 'working: active held work\n' > "$home/state/$id.status"
+    done
+  done
+  home=$(make_home working-hold-buckets)
+  fakebin=$(make_fakebin "$home")
+
+  summary=$(PATH="$fakebin:$PATH" FM_HOME="$mate" FM_SNAPSHOT_NOW=2026-07-11T18:00:00Z \
+    "$ROOT/bin/fm-fleet-snapshot.sh" --secondmate-home-summary)
+  printf '%s' "$summary" | jq -e '
+    ([.decisions_open[].id] | contains(["working-live"]))
+      and ([.queued[].id] | contains(["working-live", "working-blocked", "working-dated", "working-aged"]))
+      and ([.queued[] | select(.hold_bucket != null)] | length) == 4
+  ' >/dev/null || fail "working captain holds were filtered from the secondmate summary: $summary"
+
+  json=$(run "$home" "$fakebin" --json --all-queued)
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "working-live"))
+      and (.decisions_open | any(.id == "working-mate/working-live"))
+      and (.gates | any(.id == "working-blocked" and .owner == "(main)" and (.reason | startswith("blocked-by missing-work"))))
+      and (.gates | any(.id == "working-dated" and .owner == "(main)" and (.reason | startswith("until 2026-08-01"))))
+      and (.gates | any(.id == "working-aged" and .owner == "(main)" and (.reason | startswith("held 40d"))))
+      and (.gates | any(.id == "working-blocked" and .owner == "working-mate"))
+      and (.gates | any(.id == "working-dated" and .owner == "working-mate"))
+      and (.gates | any(.id == "working-aged" and .owner == "working-mate"))
+  ' >/dev/null || fail "working captain holds did not surface in their default buckets: $json"
+
+  expanded=$(run "$home" "$fakebin" --json --all-decisions --all-queued)
+  printf '%s' "$expanded" | jq -e '
+    ([.decisions_open[].id]
+      | contains(["working-live", "working-blocked", "working-dated", "working-aged",
+                  "working-mate/working-live", "working-mate/working-blocked",
+                  "working-mate/working-dated", "working-mate/working-aged"]))
+      and ([.gates[] | select(.id == "working-live" or .id == "working-blocked"
+          or .id == "working-dated" or .id == "working-aged")] | length) == 0
+  ' >/dev/null || fail "--all-decisions did not reveal every working captain hold gate-free: $expanded"
+  pass "working captain holds retain main and secondmate bucket surfaces"
 }
 
 test_active_children_project_independent_of_home_captain_hold() {
@@ -2853,6 +2921,7 @@ test_captains_call_anti_leak
 test_main_orphan_in_flight_is_disclosed_not_invented
 test_main_unstructured_current_is_disclosed_with_structured_sibling
 test_main_orphan_counterfactual_meta_clears_inventory_warning
+test_working_captain_holds_keep_their_bucket_surfaces
 test_active_children_project_independent_of_home_captain_hold
 test_mixed_secondmate_roles_partial_state_and_captain_readiness
 test_main_captain_readiness_matches_secondmate_projection

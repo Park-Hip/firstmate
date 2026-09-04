@@ -44,7 +44,8 @@
 #     re-holding with --until.
 #     Renderers keep every non-live bucket out of the default Captain's Call,
 #     project it as a Charted Next gate stating why, and disclose it in
-#     omitted[]; --all-decisions reveals every captain hold.
+#     omitted[]; --all-decisions reveals every captain hold available within the
+#     bounded snapshot.
 #   tasks[]: one row per task metadata record captured at snapshot start, sorted
 #     by id. A record removed before capture is omitted. If a captured task's
 #     generation changes while observations run, its selected metadata remains
@@ -369,15 +370,6 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
       | (timestamp_epoch($to)) as $b
       | if $a == null or $b == null then null
         else (($b - $a) / 86400 | floor) end;
-    def hold_stamp_line:
-      test("^Captain hold set: [0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?$");
-    def resolution_leader:
-      test("^Resolution recorded by fm-(captain|decision)-hold\\.$");
-    def current_prose_lines:
-      (if length > 0 and (.[0] | hold_stamp_line) then .[1:] else . end) as $lines
-      | (($lines | map(resolution_leader) | index(true))
-         // ($lines | length)) as $resolution
-      | $lines[:$resolution];
     def section_state:
       if . == "In flight" then "in_flight"
       elif . == "Queued" then "queued"
@@ -495,7 +487,7 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
     | .records |= map(
         if (.body_lines | length) > 0 then
           .hold_set = cap(.body_lines[0]; "^Captain hold set:[[:space:]]*(?<v>[0-9]{4}-[0-9]{2}-[0-9]{2}(?:T[0-9]{2}:[0-9]{2}:[0-9]{2}Z)?)$")
-          | .body_excerpt = ((.body_lines | current_prose_lines | join(" "))[:240])
+          | .body_excerpt = ((.body_lines | join(" "))[:240])
         else . end)
     | .records as $records
     | (reduce ($records[] | select(.structured)) as $record ({};
@@ -939,7 +931,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
     | ([ $backlog.records[]? | select(.state == "in_flight" and .structured) ]) as $owned_in_flight
     | ([ $backlog.records[]?
          | select(.structured and
-             (.state == "queued" or
+             (.hold_bucket != null or .state == "queued" or
               (.state == "in_flight" and .current_role == "held"
                and (.id as $id
                     | any($tasks[]; .id == $id and .current_state.state == "working") | not)))) ]) as $queued_all

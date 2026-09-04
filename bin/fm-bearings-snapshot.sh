@@ -23,17 +23,6 @@
 # This wrapper consumes canonical status decisions plus canonically normalized
 # backlog roles, unresolved blockers, and captain actionability. It never infers
 # decisions from report or visual-review prose or reimplements snapshot semantics.
-# Captain's Call starts from captain actionability: every due, unblocked task
-# held for the captain, whatever its kind, before the presentation-only filters
-# below. A captain hold deferred by date
-# (hold-until in the future) is not actionable and renders as a Charted Next
-# gate with its date. Once that date arrives, a complete parked-style reason
-# becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED
-# marker remains gated. Any prose-deferred row, including one that is also
-# blocked, renders as a Charted Next gate and is disclosed in omitted[].
-# --all-decisions reveals every presentation-filtered captain hold without retaining
-# its gate, including a hold that is otherwise non-actionable because it is blocked.
-# Other non-actionable rows remain gated.
 # Underway (in_flight) projects every main live worker plus every active child
 # from every readable secondmate ledger, independently of that home's
 # bearings_state. A home classified captain_decision because it has an open
@@ -46,8 +35,9 @@
 # Captain's Call entry; "blocked", "dated", and "aged" leave the default
 # Captain's Call, render as Charted Next gates stating why (the blocking work,
 # the until date, or the floored age), and are counted in omitted[].
-# --all-decisions reveals every captain hold and drops its gate, so a hold is
-# never shown twice. Aging is a projection safety net only; the durable
+# --all-decisions reveals every captain hold available within the bounded snapshot
+# and drops its gate, so a hold is never shown twice. Aging is a projection safety
+# net only; the durable
 # deferral remains re-holding with --until.
 #
 # Main-home inventory validity comes from the canonical snapshot's main_inventory
@@ -72,7 +62,7 @@
 #   --include-prs    ALSO do live GitHub open-PR discovery + checks
 #   --fields <list>  opt in to dropped surfaces: bodies,paths,actions,endpoints
 #   --all-in-flight  include every in-flight task
-#   --all-decisions  include every open decision and presentation-filtered captain hold
+#   --all-decisions  include every open decision and captain hold in the bounded snapshot
 #   --all-secondmates include every aggregated secondmate record
 #   --all-landed     include every landed record from every home (default: bounded)
 #   --all-reports    include the full scout-report inventory (default: relevant only)
@@ -152,7 +142,7 @@ For every registered secondmate, readable structured facts from its own home are
   evidence and never become current work. The provenance and freshness fields
   distinguish live and cached ledgers; a home without either is explicitly unreadable.
 Opt-in surfaces: --fields bodies|paths|actions|endpoints, --all-in-flight,
-  --all-decisions (all open decisions and presentation-filtered captain holds),
+  --all-decisions (all open decisions and captain holds in the bounded snapshot),
   --all-secondmates, --all-landed, --all-reports, --all-queued, --all-recorded-prs,
   --all-unhealthy, --all-pr-repos, --include-prs (adds candidate_prs).
 Raise FM_BEARINGS_PR_LIMIT to expand per-repository open-PR results.
@@ -481,7 +471,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
      + [ .backlog.records[]
          | . as $record
          | select(.structured and
-             (.state == "queued" or
+             (.hold_bucket != null or .state == "queued" or
               (.state == "in_flight" and .current_role == "held" and ($working_ids | index($record.id) | not))))
          | select(.captain_actionable != true)
          | select((.hold_bucket == null) or ($all_decisions == 0))
@@ -552,7 +542,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
         (([($snap.secondmate_current.records // [])[] | select(.parent_event.activity_scan.input_truncated == true or .parent_event.activity_scan.retained_truncated == true)] | length) as $n | if $n > 0 then {surface:("secondmate parent activity evidence truncated for \($n) record(s)"), reveal:"raise FM_SNAPSHOT_PARENT_ACTIVITY_LINES, FM_SNAPSHOT_PARENT_ACTIVITY_BYTES, or FM_SNAPSHOT_PARENT_ACTIVITIES"} else empty end),
         (([($snap.secondmate_current.records // [])[] | select(.parent_event.activity_scan.available == false)] | length) as $n | if $n > 0 then {surface:("secondmate parent activity evidence unavailable for \($n) record(s)"), reveal:"inspect the parent status logs"} else empty end),
         (if $all_decisions == 0 and ($decisions_all | length) > $decisions_n then {surface:("decisions_open showing \($decisions_n) of \($decisions_all | length)"), reveal:"--all-decisions"} else empty end),
-        (if $all_decisions == 0 and $decisions_marked_deferred > 0 then {surface:("captain holds marked deferred, superseded, or aged: \($decisions_marked_deferred)"), reveal:"--all-decisions"} else empty end),
+        (if $all_decisions == 0 and $decisions_marked_deferred > 0 then {surface:("captain holds bucketed blocked, dated, or aged: \($decisions_marked_deferred)"), reveal:"--all-decisions"} else empty end),
         (if $all_queued == 0 and ($gates_all | length) > $gates_n then {surface:("gates showing \($gates_n) of \($gates_all | length)"), reveal:"--all-queued"} else empty end),
         (if $all_reports == 0 and ($reports_all | length) > $reports_n then {surface:("reports showing \($reports_n) of \($reports_all | length)"), reveal:"--all-reports"} else empty end),
         (if $all_recorded_prs == 0 and ($recorded_prs_all | length) > $recorded_prs_n then {surface:("recorded_prs showing \($recorded_prs_n) of \($recorded_prs_all | length)"), reveal:"--all-recorded-prs"} else empty end),

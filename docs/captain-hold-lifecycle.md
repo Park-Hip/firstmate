@@ -18,7 +18,6 @@ The `answer` subcommand records the captain's exact words and closes the call in
 It requires a non-empty captain decision file of at most 8192 bytes, durably writes a resolution block carrying the decision digest and a `Resolution mode:` while retaining the leading hold-set stamp until `tasks-axi done` or, under `answer --release`, `tasks-axi unhold` succeeds, then restores the successful record's resolution-first body ordering (the previous body remains preserved below the block and archived through tasks-axi `--archive-body`).
 If the close is interrupted, the still-held task therefore keeps its original age basis.
 A matching retry also completes any resolution-first normalization left unfinished after the close itself succeeded.
-As an accepted limit, a rare concurrent answer-close and re-hold race can leave the newly re-held task without its age basis; re-holding it through the wrapper with `--until` remains the durable fix rather than relying on this projection safety net.
 An exact retry is idempotent only when the requested close mode matches the newest record; a drifted answer or mode mismatch is rejected, while a re-held task accepts a new answer as a new record on top.
 On a task closed outside the script, `answer` records the missing block only when the captain-hold annotations tasks-axi preserves through a close prove the captain owned it, and it verifies the task stays closed.
 A hold whose `--until` date has passed keeps those annotations while tasks-axi reports it no longer held, so an expired deferral remains answerable.
@@ -74,11 +73,17 @@ Its secondmate-home summary classifies an actionable captain hold as `captain_de
 `bin/fm-bearings-snapshot.sh` places each captain hold by its `hold_bucket` and inspects no prose of its own.
 A `live` hold is a default Captain's Call entry.
 A `blocked`, `dated`, or `aged` hold leaves the default Captain's Call, renders as a Charted Next gate stating why - the blocking work, the `until <date>`, or the floored age - and contributes to the concrete `omitted[]` disclosure.
-`--all-decisions` reveals every captain hold and drops its gate, so a hold is shown once and never twice.
-Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`, so a remote captain hold beyond those bounds may not project as a Charted Next gate.
-A remote or secondmate hold also retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent; re-holding it through the wrapper with `--until` remains the durable fix for both limits.
+`--all-decisions` reveals every captain hold available within the remote-summary bound and drops its gate, so an available hold is shown once and never twice.
+
+Three accepted limits remain deliberate:
+
+- A remote or secondmate hold retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent.
+- A rare concurrent answer-close and re-hold race can leave the newly re-held task without its age basis.
+- Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`; a remote deferred hold beyond those bounds is not exported, so it can be neither gated nor revealed.
+
+Re-holding through the wrapper with `--until` remains the durable fix rather than relying on the projection safety net.
 Recently Landed excludes a record that closed while still held for the captain (surviving `hold-kind: captain` on a Done row), so answered questions do not masquerade as shipped work; a work item released before completion keeps no hold annotations and lands normally.
-The projection remains read-only and does not inspect historical prose beyond the canonical snapshot's marker.
+The projection remains read-only and uses the canonical snapshot's structured fields, including the machine-written hold-set timestamp.
 
 ## Record divergence
 
