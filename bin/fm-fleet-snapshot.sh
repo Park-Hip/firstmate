@@ -45,9 +45,10 @@
 #     old (default 14). Legacy unstamped holds fall back to `since`.
 #     hold_age_days is that age when computable, else null.
 #     This is a projection safety net only: the durable deferral remains
-#     re-holding with --until. Renderers project an aged undated hold as a
-#     Charted Next gate showing its age, disclose it in omitted[], and reveal
-#     it with --all-decisions; it stays captain_actionable.
+#     re-holding with --until. Aging does not change captain_actionable.
+#     Renderers project an aged undated hold as a Charted Next gate showing its
+#     age and disclose it in omitted[]; --all-decisions reveals it only when it
+#     is otherwise actionable.
 #   tasks[]: one row per task metadata record captured at snapshot start, sorted
 #     by id. A record removed before capture is omitted. If a captured task's
 #     generation changes while observations run, its selected metadata remains
@@ -87,6 +88,9 @@
 #     reconcile_inventory independently of projection trust.
 #     Actionable captain holds
 #     appear in decisions_open; blocked captain holds remain queued with metadata.
+#     Structured-home input must use fm-secondmate-home-summary.v2; an older live
+#     ledger or cached copy is invalid and leaves the home explicitly unreadable
+#     until its producer publishes the current schema.
 #   secondmate_landed: {records[],truncated[],unreadable[],partial[]} - the
 #     compatibility landed-work roll-up derived from secondmate_current. Readable
 #     structured homes are partial, not unreadable, when an unavailable child state
@@ -233,8 +237,10 @@ count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Every sampled remote home's state/home-summary.json is fetched concurrently
 under one FM_SNAPSHOT_BUDGET (default 5 seconds), with a valid prior copy under
 FM_SNAPSHOT_CACHE_DIR used when the live read fails, is invalid, or consumes the
-budget. A home with neither a valid ledger nor a valid cached copy is reported
-unreadable with the reason; collection never computes a summary in that home.
+budget. Only fm-secondmate-home-summary.v2 ledgers and cached copies are valid;
+an older schema is rejected. A home with neither a valid current ledger nor a
+valid current cached copy is reported unreadable with the reason; collection
+never computes a summary in that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
 observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).

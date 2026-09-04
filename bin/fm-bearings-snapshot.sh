@@ -27,10 +27,12 @@
 # held for the captain, whatever its kind, before the presentation-only filters
 # below. A captain hold deferred by date
 # (hold-until in the future) is not actionable and renders as a Charted Next
-# gate with its date; an actionable undated row the canonical snapshot marks
-# prose-deferred (deferred_marker) leaves Captain's Call for a Charted Next gate
-# and is disclosed in omitted[]. --all-decisions reveals it without retaining
-# the gate, while --all-queued reveals a non-actionable prose-deferred row.
+# gate with its date. Once that date arrives, a complete parked-style reason
+# becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED
+# marker remains gated. Any prose-deferred row, including one that is also
+# blocked, renders as a Charted Next gate and is disclosed in omitted[].
+# --all-decisions reveals actionable presentation-filtered rows without retaining
+# their gates; non-actionable rows remain gated.
 # Underway (in_flight) projects every main live worker plus every active child
 # from every readable secondmate ledger, independently of that home's
 # bearings_state. A home classified captain_decision because it has an open
@@ -38,10 +40,11 @@
 # the home row on secondmates[] keeps the decision and gate classification.
 # An undated captain hold the canonical snapshot marks aged_undated_hold
 # (recorded hold-set timestamp at least FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old,
-# falling back to since for a legacy unstamped hold) leaves default Captain's
-# Call, renders as a Charted Next gate showing its floored age, is disclosed in
-# omitted[], and is revealed by --all-decisions without retaining its safety
-# gate. Parked-style and aging hints use the same undated-hold gate projection.
+# falling back to since for a legacy unstamped hold) renders as a Charted Next
+# gate showing its floored age and is disclosed in omitted[]. When actionable,
+# it leaves default Captain's Call and --all-decisions reveals it without
+# retaining its safety gate; a non-actionable row remains gated. Parked-style
+# and aging hints use the same undated-hold gate projection.
 # This is a projection safety net only; the durable deferral remains re-holding
 # with --until.
 #
@@ -67,11 +70,11 @@
 #   --include-prs    ALSO do live GitHub open-PR discovery + checks
 #   --fields <list>  opt in to dropped surfaces: bodies,paths,actions,endpoints
 #   --all-in-flight  include every in-flight task
-#   --all-decisions  include every open decision present in the bounded snapshot
+#   --all-decisions  include every actionable open decision present in the bounded snapshot
 #   --all-secondmates include every aggregated secondmate record
 #   --all-landed     include every landed record from every home (default: bounded)
 #   --all-reports    include the full scout-report inventory (default: relevant only)
-#   --all-queued     include every prose-deferred queued item present in the bounded snapshot
+#   --all-queued     include every queued gate present in the bounded snapshot
 #   --all-recorded-prs include every locally recorded PR
 #   --all-unhealthy  include every unhealthy endpoint
 #   --all-pr-repos   query every discovered repository under --include-prs
@@ -147,7 +150,7 @@ For every registered secondmate, readable structured facts from its own home are
   evidence and never become current work. The provenance and freshness fields
   distinguish live and cached ledgers; a home without either is explicitly unreadable.
 Opt-in surfaces: --fields bodies|paths|actions|endpoints, --all-in-flight,
-  --all-decisions (all open decisions present in the bounded snapshot),
+  --all-decisions (all actionable open decisions present in the bounded snapshot),
   --all-secondmates, --all-landed, --all-reports, --all-queued, --all-recorded-prs,
   --all-unhealthy, --all-pr-repos, --include-prs (adds candidate_prs).
 Raise FM_BEARINGS_PR_LIMIT to expand per-repository open-PR results.

@@ -70,8 +70,10 @@ The durable deferral remains re-holding with `--until`.
 Its secondmate-home summary classifies an actionable captain hold as `captain_decision` and preserves blocked or deferred captain holds as queued work in the owning home.
 
 `bin/fm-bearings-snapshot.sh` projects actionable captain holds into `decisions_open` and leaves blocked captain holds in ordinary queued gates.
-A date-deferred captain hold renders as a gate with its `until <date>:` reason; an actionable undated prose-deferred one leaves default Captain's Call for a Charted Next gate with an `omitted[]` disclosure, while `--all-queued` reveals non-actionable prose-deferred queued rows.
-An aged undated captain hold likewise leaves default Captain's Call, renders as a Charted Next gate showing its age, and is disclosed in `omitted[]`; `--all-decisions` reveals parked-style and aged holds in Captain's Call and removes their safety gates so the buckets remain exclusive.
+A captain hold with a future date renders as a gate with its `until <date>:` reason.
+When the date arrives, a complete parked-style reason becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker remains gated regardless of date.
+A deferred or aged captain hold, including one that is also blocked, renders as a Charted Next gate and contributes to the concrete `omitted[]` disclosure.
+`--all-decisions` reveals actionable parked-style and aged holds in Captain's Call and removes their safety gates so the buckets remain exclusive; non-actionable holds remain gated.
 Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`, so a remote captain hold beyond those bounds may not project as a Charted Next gate.
 A remote or secondmate hold also retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent; re-holding it through the wrapper with `--until` remains the durable fix for both limits.
 Recently Landed excludes a record that closed while still held for the captain (surviving `hold-kind: captain` on a Done row), so answered questions do not masquerade as shipped work; a work item released before completion keeps no hold annotations and lands normally.
@@ -113,5 +115,5 @@ It proves: cleanup of a finished task whose own row is the captain call leaves t
 
 `tests/fm-classify-decision-key.test.sh` pins `status_key_closing_verb` itself: it separates a resolution from the durable-transfer close and from a still-open key, reports the last real transition across re-openings and both key positions, and treats a prose mention as no transition.
 
-Projection regressions live in `tests/fm-fleet-snapshot-view.test.sh` (hold-until parsing, the due gate, kind-independent captain actionability, deferred_marker, undated-hold aging, title stripping) and `tests/fm-bearings-snapshot.test.sh` (Captain's Call membership, the dated-gate rendering, prose-deferral and aged-undated suppression with disclosure, and the landed exclusion by surviving captain-hold annotations).
+Projection regressions live in `tests/fm-fleet-snapshot-view.test.sh` (hold-until parsing, the due gate, kind-independent captain actionability, deferred markers, undated-hold aging, title stripping) and `tests/fm-bearings-snapshot.test.sh` (Captain's Call membership, arrived parked reasons, explicit deferrals, blocked deferred disclosure, aged-undated gates, remote-summary schema invalidation, and the landed exclusion by surviving captain-hold annotations).
 The exact commands and their summarized outputs are recorded in the shipping PR's evidence; run the four suites above plus `tests/fm-send-resolve-key.test.sh`, `tests/fm-bearings-board.test.sh`, and `bin/fm-lint.sh` to refresh this record.
