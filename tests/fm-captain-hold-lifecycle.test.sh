@@ -367,8 +367,7 @@ EOF
     .backlog.records[] | select(.id == "sample-widget")
     | .hold_set == "2026-07-14T12:00:00Z"
       and .hold_age_days == 0
-      and .aged_undated_hold == false
-      and .deferred_marker == false
+      and .hold_bucket == "live"
   ' >/dev/null || fail "a new hold lifecycle reused historical timestamp or answer text: $snap"
   printf 'Price it at nine dollars.\n' > "$home/price.txt"
   run_captain "$home" answer sample-widget --decision-file "$home/price.txt" --release >/dev/null \
@@ -488,8 +487,7 @@ EOF
     | .captain_actionable == true
       and .hold_set == "2026-07-14T12:00:00Z"
       and .hold_age_days == 0
-      and .aged_undated_hold == false
-      and .deferred_marker == false
+      and .hold_bucket == "live"
   ' >/dev/null || fail "an interrupted answer lost the fresh hold age basis: $snap"
 
   if run_captain "$home" answer sample-interrupted-call \
@@ -554,9 +552,9 @@ EOF
     | $later.captain_actionable == false and $later.hold_until == "2026-08-01"
       and $now.captain_actionable == true and $now.hold_until == null
       and $existing.since == "2026-06-01" and $existing.hold_set == "2026-07-14T12:00:00Z"
-      and $existing.hold_age_days == 0 and $existing.aged_undated_hold == false
-      and ([.backlog.records[] | select(.id == "sample-near-marker")][0].deferred_marker == true)
-      and ([.backlog.records[] | select(.id == "sample-late-marker")][0].deferred_marker == false)
+      and $existing.hold_age_days == 0 and $existing.hold_bucket == "live"
+      and ([.backlog.records[] | select(.id == "sample-near-marker")][0].hold_bucket == "live")
+      and ([.backlog.records[] | select(.id == "sample-late-marker")][0].hold_bucket == "live")
       and ($later.title | contains("hold-until") | not)
   ' >/dev/null || fail "the due gate, hold-set age, or hold-until parsing is wrong: $snap"
 
@@ -578,7 +576,7 @@ EOF
     ([.backlog.records[] | select(.id == "sample-later-call")][0]) as $later
     | ([.backlog.records[] | select(.id == "sample-existing-call")][0]) as $existing
     | $later.captain_actionable == true
-      and $existing.hold_age_days == 18 and $existing.aged_undated_hold == true
+      and $existing.hold_age_days == 18 and $existing.hold_bucket == "aged"
   ' >/dev/null || fail "a due deferral did not resurface or a stamped hold did not age from its hold date"
   show=$(tasks_in "$home" show sample-later-call --full)
   assert_contains "$show" "hold_kind: captain" "the expired deferral lost its captain-hold annotations"

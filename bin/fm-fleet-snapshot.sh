@@ -22,33 +22,29 @@
 #     hold_reason, and hold_until when tasks-axi emits it. They also carry
 #     normalized current_role, requires_child_metadata, blocked_by_ids,
 #     unresolved_blocker_ids, captain_actionable, hold_set, hold_age_days,
-#     aged_undated_hold, and deferred_marker fields.
+#     and hold_bucket fields.
 #     Repeated blocker tokens remain ordered; a blocker resolves only when its
 #     structured record is Done, and missing ids stay open.
-#     captain_actionable means "waiting on the captain now": queued, held for
-#     the captain, unblocked, and due (no hold_until, or hold_until at or
-#     before the observation date, matching tasks-axi's own date-gate rule).
 #     There is no separate decision type: any captain-held task is the same
 #     primitive, whatever kind its row carries.
-#     deferred_marker is a presentation hint only: the row's hold reason or
-#     first 240 characters of current body prose (excluding the machine-generated
-#     hold-set stamp and preserved historical resolution blocks) carries an
-#     explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker. A hold reason whose
-#     complete value is a parked-style marker (parked, awaiting captain go, do
-#     not dispatch / do not auto-dispatch, not urgent, de-prioritized, queued
-#     opportunity, captain-gated) is also deferred; contextual prose containing
-#     or beginning with those words does not adjudicate the decision. It never
-#     changes captain_actionable;
-#     renderers may use it to keep prose-deferred rows out of default views.
-#     aged_undated_hold is a second presentation hint for an undated captain
-#     hold whose hold-set timestamp is at least FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS
-#     old (default 14). Legacy unstamped holds fall back to `since`.
-#     hold_age_days is that age when computable, else null.
-#     This is a projection safety net only: the durable deferral remains
-#     re-holding with --until. Aging does not change captain_actionable.
-#     Renderers project an aged undated hold as a Charted Next gate showing its
-#     age and disclose it in omitted[]; --all-decisions reveals it only when it
-#     is otherwise actionable.
+#     hold_bucket is the single classification for every captain hold, decided
+#     only from structured fields - state, hold_kind, hold_until,
+#     unresolved_blocker_ids, and the machine-written hold-set timestamp. No
+#     hold reason or body prose is ever matched. The buckets are total and
+#     mutually exclusive, so every captain hold lands in exactly one and none
+#     can fall through: "blocked" when any blocker is unresolved, else "dated"
+#     when hold_until is still in the future, else "aged" when an undated hold
+#     is at least FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old (default 14; legacy
+#     unstamped holds fall back to `since`), else "live". A non-captain or Done
+#     row carries null.
+#     captain_actionable means "waiting on the captain now" and is exactly
+#     hold_bucket == "live".
+#     hold_age_days is the hold's age when computable, else null.
+#     Aging is a projection safety net only: the durable deferral remains
+#     re-holding with --until.
+#     Renderers keep every non-live bucket out of the default Captain's Call,
+#     project it as a Charted Next gate stating why, and disclose it in
+#     omitted[]; --all-decisions reveals every captain hold.
 #   tasks[]: one row per task metadata record captured at snapshot start, sorted
 #     by id. A record removed before capture is omitted. If a captured task's
 #     generation changes while observations run, its selected metadata remains
@@ -228,8 +224,8 @@ kind=secondmate meta records are not child inventory for unowned_current or
 terminal_in_flight; they never have backlog rows.
 Its invalidity object names the normalized failure kind and affected ids.
 Actionable tasks-axi captain holds appear as decisions_open and stay visible in
-queued with hold_reason, hold_kind, hold_until, deferred_marker,
-aged_undated_hold, hold_age_days, and plural blocker fields for downstream
+queued with hold_reason, hold_kind, hold_until,
+hold_bucket, hold_age_days, and plural blocker fields for downstream
 projections. A captain hold is actionable only
 when every blocker is Done and any hold-until date has arrived.
 Cross-home collection uses FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the
@@ -255,11 +251,12 @@ FM_SNAPSHOT_PARENT_ACTIVITY_TIMEOUT, with truncation disclosed in the result.
 The registered secondmate table uses FM_SNAPSHOT_REGISTRY_LINES,
 FM_SNAPSHOT_REGISTRY_BYTES, FM_SNAPSHOT_REGISTRY_RECORDS, and
 FM_SNAPSHOT_REGISTRY_TIMEOUT, with unavailability and truncation disclosed.
-An undated captain hold whose hold-set timestamp is at least
+Every captain hold carries hold_bucket, decided only from structured fields and
+never from hold reason or body prose: "blocked", "dated", "aged", or "live".
+An undated hold ages once its hold-set timestamp is at least
 FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS old (default 14; 0 ages every hold with a
-non-negative computed age) carries aged_undated_hold and hold_age_days
-as presentation hints. Legacy holds without a stamp fall back to their since date;
-re-holding with --until remains the durable deferral.
+non-negative computed age); legacy holds without a stamp fall back to their
+since date, and re-holding with --until remains the durable deferral.
 EOF
 }
 
@@ -363,10 +360,6 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
   jq -Rn --arg path "$backlog" --arg today "$SNAPSHOT_TODAY" --arg now "$SNAPSHOT_NOW" \
     --argjson age_days "$FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS" '
     def trim: gsub("^[[:space:]]+|[[:space:]]+$"; "");
-    def explicitly_deferred:
-      test("SUPERSEDED|NOT[- ]REQUIRED|DEFERRED"; "i");
-    def parked_style_reason:
-      test("^(parked|awaiting captain go|do not (auto-)?dispatch|not urgent|de-prioritized|queued opportunity|captain-gated)[.!]?$"; "i");
     def timestamp_epoch($d):
       if ($d | type) != "string" then null
       elif ($d | test("T")) then try ($d | fromdateiso8601) catch null
@@ -522,19 +515,15 @@ backlog_json() {  # [<backlog-path>] - defaults to this home's $BACKLOG
                elif .state == "queued" then "queued"
                else "done" end)
           | .requires_child_metadata = (.current_role == "worker")
-          | .captain_actionable =
-              (.state == "queued" and .hold_kind == "captain"
-               and .hold_reason != null and (.unresolved_blocker_ids | length) == 0
-               and (.hold_until == null or .hold_until <= $today))
           | .hold_age_days = days_between((.hold_set // .since); $now)
-          | .aged_undated_hold =
-              (.hold_kind == "captain" and .hold_until == null
-               and .hold_age_days != null and .hold_age_days >= $age_days)
-          | .explicit_deferred_marker =
-              (((.hold_reason // "") | explicitly_deferred)
-               or ((.body_excerpt // "") | explicitly_deferred))
-          | .parked_style_marker = ((.hold_reason // "") | parked_style_reason)
-          | .deferred_marker = (.explicit_deferred_marker or .parked_style_marker)
+          | .hold_bucket =
+              (if .hold_kind != "captain" or .hold_reason == null or .state == "done" then null
+               elif (.unresolved_blocker_ids | length) > 0 then "blocked"
+               elif .hold_until != null and .hold_until > $today then "dated"
+               elif .hold_until == null and .hold_age_days != null
+                    and .hold_age_days >= $age_days then "aged"
+               else "live" end)
+          | .captain_actionable = (.hold_bucket == "live")
         else . end)
     | del(.section,.order)
   ' < "$backlog"
@@ -959,10 +948,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
          | {id,key:.id,verb:"captain-hold",summary:(.title | trunc(160)),
             reason:(.hold_reason | trunc(160)),
             hold_until:(.hold_until // null),
-            deferred_marker:(.deferred_marker // false),
-            explicit_deferred_marker:(.explicit_deferred_marker // false),
-            parked_style_marker:(.parked_style_marker // false),
-            aged_undated_hold:(.aged_undated_hold // false),
+            hold_bucket:(.hold_bucket // null),
             hold_age_days:(.hold_age_days // null),source:"backlog"} ]) as $captain_holds_all
     | ([ $backlog.records[]? | select(.state == "done" and .structured and .hold_kind != "captain")
          | {id:(.id | trunc(120)),title:(.title | trunc(120)),
@@ -1070,10 +1056,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
           hold_reason:((.hold_reason // null) | if . == null then null else trunc(160) end),
           hold_kind:((.hold_kind // null) | if . == null then null else trunc(40) end),
           hold_until:((.hold_until // null) | if . == null then null else trunc(40) end),
-          deferred_marker:(.deferred_marker // false),
-          explicit_deferred_marker:(.explicit_deferred_marker // false),
-          parked_style_marker:(.parked_style_marker // false),
-          aged_undated_hold:(.aged_undated_hold // false),
+          hold_bucket:(.hold_bucket // null),
           hold_age_days:(.hold_age_days // null),
           captain_actionable:(.captain_actionable // false),
           repo:((.repo // null) | if . == null then null else trunc(120) end),
@@ -1323,10 +1306,9 @@ prepare_remote_summary_collection() {  # <sampled-row-json-lines>
   SNAPSHOT_SUMMARY_FILTER="$SNAPSHOT_COLLECT_DIR/summary-filter.jq"
   cat > "$SNAPSHOT_SUMMARY_FILTER" <<'JQ'
 def current_hold_aging_fields:
-  (.deferred_marker | type) == "boolean"
-  and (.explicit_deferred_marker | type) == "boolean"
-  and (.parked_style_marker | type) == "boolean"
-  and (.aged_undated_hold | type) == "boolean"
+  has("hold_bucket")
+  and (.hold_bucket as $bucket
+       | ["live", "blocked", "dated", "aged"] | index($bucket)) != null
   and (.hold_age_days == null
        or ((.hold_age_days | type) == "number"
            and (.hold_age_days | floor) == .hold_age_days));

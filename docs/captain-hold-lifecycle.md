@@ -60,20 +60,21 @@ Trusted external process-event adapters intentionally expose no answer operation
 ## Structured read surfaces
 
 `bin/fm-fleet-snapshot.sh` parses canonical tasks-axi `(hold: ...)`, `(hold-kind: ...)`, and `(hold-until: ...)` metadata alongside existing backlog fields.
-It resolves every repeated `blocked-by:` edge against structured Done records, keeps missing blockers unresolved, and classifies a captain hold as `captain_actionable` - waiting on the captain now - only when it is queued, unblocked, and due, whatever kind its row carries.
-It also emits a presentation-only `deferred_marker` when a hold's reason or the first 240 characters of its current decision prose, excluding the machine-generated hold-set stamp and preserved historical resolution blocks, carries an explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker, or when the complete hold reason is a parked-style marker (parked, awaiting captain go, do not dispatch / do not auto-dispatch, not urgent, de-prioritized, queued opportunity, captain-gated).
-Contextual prose that merely contains or begins with a parked-style phrase is not treated as a deferral.
-An undated captain hold whose recorded hold-set timestamp is at least `FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS` old (default 14, using floored elapsed days) also carries `aged_undated_hold` and `hold_age_days`.
+It resolves every repeated `blocked-by:` edge against structured Done records and keeps missing blockers unresolved.
+It then assigns every captain hold exactly one `hold_bucket`, decided only from structured fields - `hold_kind`, `state`, `hold_until`, `unresolved_blocker_ids`, and the machine-written hold-set timestamp.
+Hold reason and body prose are never matched, so no wording can hide, reveal, or reclassify a decision.
+The buckets are total and mutually exclusive: `blocked` when any blocker is unresolved, else `dated` while `hold_until` is in the future, else `aged` when an undated hold's hold-set timestamp is at least `FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS` old (default 14, floored elapsed days), else `live`.
+No captain hold can fall through them and none can match two, which is what keeps a hold from vanishing from every view.
+`captain_actionable` - waiting on the captain now - is exactly `hold_bucket == "live"`.
 Existing undated holds without a hold-set stamp fall back to the task's `since` date.
 That aging is a projection safety net only.
 The durable deferral remains re-holding with `--until`.
 Its secondmate-home summary classifies an actionable captain hold as `captain_decision` and preserves blocked or deferred captain holds as queued work in the owning home.
 
-`bin/fm-bearings-snapshot.sh` projects actionable captain holds into `decisions_open` and leaves blocked captain holds in ordinary queued gates.
-A captain hold with a future date renders as a gate with its `until <date>:` reason.
-When the date arrives, a complete parked-style reason becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker remains gated regardless of date.
-A deferred or aged captain hold, including one that is also blocked, renders as a Charted Next gate and contributes to the concrete `omitted[]` disclosure.
-`--all-decisions` reveals every parked-style and aged hold in Captain's Call, including blocked holds, and removes their safety gates so the buckets remain exclusive; other non-actionable holds remain gated.
+`bin/fm-bearings-snapshot.sh` places each captain hold by its `hold_bucket` and inspects no prose of its own.
+A `live` hold is a default Captain's Call entry.
+A `blocked`, `dated`, or `aged` hold leaves the default Captain's Call, renders as a Charted Next gate stating why - the blocking work, the `until <date>`, or the floored age - and contributes to the concrete `omitted[]` disclosure.
+`--all-decisions` reveals every captain hold and drops its gate, so a hold is shown once and never twice.
 Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`, so a remote captain hold beyond those bounds may not project as a Charted Next gate.
 A remote or secondmate hold also retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent; re-holding it through the wrapper with `--until` remains the durable fix for both limits.
 Recently Landed excludes a record that closed while still held for the captain (surviving `hold-kind: captain` on a Done row), so answered questions do not masquerade as shipped work; a work item released before completion keeps no hold annotations and lands normally.
