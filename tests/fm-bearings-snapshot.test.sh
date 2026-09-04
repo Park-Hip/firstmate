@@ -1336,6 +1336,47 @@ EOF
   pass "a blocked deferred hold stays gated when its date arrives and is revealed by --all-decisions"
 }
 
+test_revealed_deferred_holds_show_their_deferral_reason() {
+  local home fakebin json
+  home=$(make_home revealed-deferral-reason)
+  cat > "$home/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] reveal-blocked - Blocked parked call blocked-by: missing-blocker (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
+- [ ] reveal-future - Parked call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-12-01)
+- [ ] reveal-aged - Aged undated call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a route) (hold-kind: captain)
+  Captain hold set: 2026-06-01T00:00:00Z
+- [ ] reveal-live - Genuine live call (repo: firstmate) (kind: captain) (hold: choose a cache) (hold-kind: captain)
+
+## Done
+EOF
+  fakebin=$(make_fakebin "$home")
+  json=$(run "$home" "$fakebin" --json --all-decisions)
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "reveal-blocked" and (.summary | contains("blocked-by missing-blocker"))))
+  ' >/dev/null || fail "a revealed blocked hold must show its blocked-by: $json"
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "reveal-future" and (.summary | contains("until 2026-12-01"))))
+  ' >/dev/null || fail "a revealed date-deferred hold must show its until date: $json"
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "reveal-aged" and (.summary | contains("held ") and contains("d: "))))
+  ' >/dev/null || fail "a revealed aged hold must show its age: $json"
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "reveal-live"
+       and (.summary | contains("choose a cache"))
+       and (.summary | contains("blocked-by") or contains("until ") or contains("held ") | not)))
+  ' >/dev/null || fail "a genuinely live call must not be annotated as deferred: $json"
+  json=$(run "$home" "$fakebin" --json)
+  printf '%s' "$json" | jq -e '
+    ([.decisions_open[].id] == ["reveal-live"])
+      and (.gates | any(.id == "reveal-blocked"))
+      and (.gates | any(.id == "reveal-future"))
+      and (.gates | any(.id == "reveal-aged"))
+  ' >/dev/null || fail "the default board must keep deferred holds gated and show only the live call: $json"
+  pass "revealed deferred holds display their deferral reason while live calls stay unannotated"
+}
+
 test_include_prs_is_the_only_fetch_path() {
   local home fakebin json
   home=$(make_home prs); write_fixture "$home"
@@ -2817,6 +2858,7 @@ test_section_caps_and_expansion_flags
 test_collapsed_captain_call_deferral_and_landed
 test_undated_hold_phrasing_and_aging_projection
 test_blocked_deferred_hold_has_concrete_disclosure
+test_revealed_deferred_holds_show_their_deferral_reason
 test_pr_repository_cap_and_expansion
 test_per_repository_pr_cap_is_disclosed
 test_projection_and_toon_fail_closed

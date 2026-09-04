@@ -355,6 +355,14 @@ MODEL=$(printf '%s' "$SNAP" | jq \
     elif (.hold_until // null) != null and .hold_until > $today then
       ("until " + .hold_until + ": " + (.hold_reason // .blocked_reason // "-"))
     else (.hold_reason // .blocked_reason // "-") end;
+  def hold_reveal_reason($base):
+    (((.unresolved_blocker_ids // [])
+      | if length > 0 then ("blocked-by " + join(",") + "; ") else "" end)) as $blockers
+    | if .aged_undated_hold == true and .hold_age_days != null then
+        ($blockers + "held " + (.hold_age_days | tostring) + "d: " + $base)
+      elif (.hold_until // null) != null and .hold_until > $today then
+        ($blockers + "until " + .hold_until + ": " + $base)
+      else ($blockers + $base) end;
   def as_gate($owner):
     {id, title:(.title | trunc(60)),
      blocked_by:((.unresolved_blocker_ids // []) | if length > 0 then join(",") else "-" end | trunc(120)),
@@ -452,18 +460,27 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | select((.captain_actionable == true and (($all_decisions == 1) or live_captain_call))
                   or ($all_decisions == 1 and projected_deferred_hold))
          | {id,key:.id,verb:"captain-hold",
-            summary:((.title + ": " + .hold_reason) | trunc(90)),owner:"(main)"} ]
+            summary:((.title + ": "
+                      + (if projected_deferred_hold
+                         then hold_reveal_reason(.hold_reason)
+                         else .hold_reason end)) | trunc(90)),owner:"(main)"} ]
      + [ (.secondmate_current.records // [])[] as $m
          | ([ $m.decisions_open[]?
               | select(.source == "backlog" and .verb == "captain-hold")
               | select(($all_decisions == 1) or live_captain_call)
               | {id:($m.id + "/" + .id),key,verb,
-                 summary:(((.summary // .id) + ": " + (.reason // "captain decision pending")) | trunc(90)),owner:$m.id} ]
+                 summary:(((.summary // .id) + ": "
+                           + ((.reason // "captain decision pending") as $base
+                              | if (live_captain_call | not)
+                                then hold_reveal_reason($base)
+                                else $base end)) | trunc(90)),owner:$m.id} ]
             + [ $m.queued[]?
                 | select($all_decisions == 1 and .captain_actionable != true
                          and .hold_kind == "captain" and projected_deferred_hold)
                 | {id:($m.id + "/" + .id),key:.id,verb:"captain-hold",
-                   summary:(((.title // .id) + ": " + (.hold_reason // "captain decision pending")) | trunc(90)),owner:$m.id} ])[] ]) as $decisions_all
+                   summary:(((.title // .id) + ": "
+                             + ((.hold_reason // "captain decision pending") as $base
+                                | hold_reveal_reason($base))) | trunc(90)),owner:$m.id} ])[] ]) as $decisions_all
   | ([ .backlog.records[]
          | . as $record
          | select(.structured and .hold_kind == "captain"
