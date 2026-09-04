@@ -471,6 +471,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
               (.state == "in_flight" and .current_role == "held" and ($working_ids | index($record.id) | not))))
          | select(.captain_actionable != true)
          | select(($all_queued == 1) or (.deferred_marker != true)
+                  or (.hold_kind == "captain" and .deferred_marker == true)
                   or ((.hold_until // null) != null and .hold_until > $today))
          | as_gate("(main)") ]
      + [ .backlog.records[]
@@ -482,6 +483,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | $m.queued[]?
          | select(.captain_actionable != true)
          | select(($all_queued == 1) or (.deferred_marker != true)
+                  or (.hold_kind == "captain" and .deferred_marker == true)
                   or ((.hold_until // null) != null and .hold_until > $today))
          | as_gate($m.id) ]
      + [ (.secondmate_current.records // [])[] as $m
