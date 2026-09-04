@@ -1164,14 +1164,35 @@ EOF
 }
 
 test_undated_hold_phrasing_and_aging_projection() {
-  local home fakebin json
+  local home mate fakebin json
   home=$(make_home undated-aging-proj)
-  mkdir -p "$home/data"
+  mate=$(fixture_mate_home "$home")
+  mkdir -p "$home/data" "$mate/data" "$mate/state" "$mate/config" "$mate/projects" "$mate/bin"
+  printf '# Firstmate fixture\n' > "$mate/AGENTS.md"
+  printf 'aging-mate\n' > "$mate/.fm-secondmate-home"
+  printf -- '- aging-mate - hold aging fixture (home: %s; scope: captain holds; projects: firstmate; added 2026-07-11)\n' \
+    "$mate" > "$home/data/secondmates.md"
+  fm_write_meta "$home/state/aging-mate.meta" \
+    "kind=secondmate" "mode=secondmate" "harness=pi" "home=$mate" "projects=firstmate"
+  cat > "$mate/data/backlog.md" <<'EOF'
+## In flight
+
+## Queued
+- [ ] mate-parked - Remote parked call (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
+- [ ] mate-future-parked - Remote parked call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-08-01)
+- [ ] mate-due-parked - Remote parked call now due (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-07-11)
+- [ ] mate-aged - Remote aged call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a remote route) (hold-kind: captain)
+  Captain hold set: 2026-06-01T00:00:00Z
+
+## Done
+EOF
   cat > "$home/data/backlog.md" <<'EOF'
 ## In flight
 
 ## Queued
 - [ ] parked-hold - Parked style call (repo: firstmate) (kind: ship) (since 2026-07-10) (hold: not urgent) (hold-kind: captain)
+- [ ] future-parked - Parked style call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-08-01)
+- [ ] due-parked - Parked style call now due (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-07-11)
 - [ ] aged-call - Aged genuine call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a sample route) (hold-kind: captain)
   Captain hold set: 2026-06-01T00:00:00Z
 - [ ] recent-call - Recent genuine call (repo: firstmate) (kind: captain) (since 2026-07-10) (hold: choose a sample route) (hold-kind: captain)
@@ -1205,6 +1226,10 @@ EOF
   json=$(run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.[]; .id == "recent-call"))
+      and (.decisions_open | any(.[]; .id == "due-parked"))
+      and (.decisions_open | any(.[]; .id == "future-parked") | not)
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-future-parked") | not)
       and (.decisions_open | any(.[]; .id == "contextual-call"))
       and (.decisions_open | any(.[]; .id == "contextual-not-urgent"))
       and (.decisions_open | any(.[]; .id == "contextual-comma" and .summary == "Comma context is not a deferral: not urgent, choose the launch route now"))
@@ -1216,15 +1241,25 @@ EOF
       and (.decisions_open | any(.[]; .id == "parked-hold") | not)
       and (.decisions_open | any(.[]; .id == "aged-call") | not)
       and (.gates | any(.[]; .id == "parked-hold" and .reason == "not urgent"))
+      and (.gates | any(.[]; .id == "future-parked" and .reason == "until 2026-08-01: parked"))
+      and (.gates | any(.[]; .id == "due-parked") | not)
       and (.gates | any(.[]; .id == "aged-call" and (.reason | startswith("held 40d"))))
       and (.gates | any(.[]; .id == "legacy-old-hold" and (.reason | startswith("held 40d"))))
+      and (.gates | any(.[]; .id == "mate-parked" and .owner == "aging-mate" and .reason == "parked"))
+      and (.gates | any(.[]; .id == "mate-future-parked" and .owner == "aging-mate" and .reason == "until 2026-08-01: parked"))
+      and (.gates | any(.[]; .id == "mate-due-parked" and .owner == "aging-mate") | not)
+      and (.gates | any(.[]; .id == "mate-aged" and .owner == "aging-mate" and (.reason | startswith("held 40d"))))
       and (.gates | any(.[]; .id == "recent-call") | not)
-      and (.omitted | any(.[]; .surface | startswith("captain holds marked deferred")))
+      and (.omitted | any(.[]; .surface == "captain holds marked deferred, superseded, or aged: 5"))
   ' >/dev/null || fail "parked-style and aged undated holds must leave Captain's Call: $json"
   json=$(run "$home" "$fakebin" --json --all-decisions)
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.[]; .id == "parked-hold"))
       and (.decisions_open | any(.[]; .id == "aged-call"))
+      and (.decisions_open | any(.[]; .id == "due-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-aged"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-parked"))
       and (.decisions_open | any(.[]; .id == "recent-call"))
       and (.decisions_open | any(.[]; .id == "contextual-call"))
       and (.decisions_open | any(.[]; .id == "contextual-not-urgent"))
@@ -1234,7 +1269,10 @@ EOF
       and (.decisions_open | any(.[]; .id == "contextual-gated"))
       and (.decisions_open | any(.[]; .id == "reheld-current-call"))
       and (.decisions_open | any(.[]; .id == "legacy-old-hold"))
-      and (.gates | any(.[]; .id == "parked-hold" or .id == "aged-call" or .id == "legacy-old-hold") | not)
+      and (.gates | any(.[]; .id == "parked-hold" or .id == "aged-call" or .id == "legacy-old-hold"
+          or .id == "mate-parked" or .id == "mate-aged" or .id == "mate-due-parked") | not)
+      and (.gates | any(.[]; .id == "future-parked" and .reason == "until 2026-08-01: parked"))
+      and (.gates | any(.[]; .id == "mate-future-parked" and .owner == "aging-mate" and .reason == "until 2026-08-01: parked"))
   ' >/dev/null || fail "--all-decisions must reveal parked-style and aged holds without duplicating their gates: $json"
   json=$(FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS=50 run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '

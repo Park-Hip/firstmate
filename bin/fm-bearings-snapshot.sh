@@ -336,7 +336,9 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   def trunc($n): if . == null then null else
     (tostring | gsub("\\s+"; " ") | if (length > $n) then (.[:$n] + "…") else . end) end;
   def live_captain_call:
-    (.deferred_marker != true) and (.aged_undated_hold != true);
+    (.aged_undated_hold != true)
+    and ((.deferred_marker != true)
+         or ((.hold_until // null) != null and .hold_until <= $today));
   def projected_undated_hold:
     (.hold_until == null)
     and (.deferred_marker == true or .aged_undated_hold == true);
@@ -446,10 +448,12 @@ MODEL=$(printf '%s' "$SNAP" | jq \
             summary:(((.summary // .id) + ": " + (.reason // "captain decision pending")) | trunc(90)),owner:$m.id} ]) as $decisions_all
   | ([ .backlog.records[]
          | select(.structured and .captain_actionable == true
-                  and (.deferred_marker == true or .aged_undated_hold == true)) ]
+                  and (.deferred_marker == true or .aged_undated_hold == true)
+                  and (live_captain_call | not)) ]
      + [ (.secondmate_current.records // [])[] | .decisions_open[]?
          | select(.source == "backlog" and .verb == "captain-hold"
-                  and (.deferred_marker == true or .aged_undated_hold == true)) ]
+                  and (.deferred_marker == true or .aged_undated_hold == true)
+                  and (live_captain_call | not)) ]
      | length) as $decisions_marked_deferred
   | ((if (.main_inventory.valid == false) then
         [{id:"(main-inventory)",
