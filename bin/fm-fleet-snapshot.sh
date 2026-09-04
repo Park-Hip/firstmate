@@ -1044,7 +1044,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
        elif ($holds_all | length) > 0 then "externally_held"
        else "no_active_work" end) as $state
     | {
-        schema:"fm-secondmate-home-summary.v1",
+        schema:"fm-secondmate-home-summary.v2",
         generated:$generated,
         generated_epoch:$generated_epoch,
         home:$home,
@@ -1316,7 +1316,7 @@ prepare_remote_summary_collection() {  # <sampled-row-json-lines>
   SNAPSHOT_SUMMARY_FILTER="$SNAPSHOT_COLLECT_DIR/summary-filter.jq"
   cat > "$SNAPSHOT_SUMMARY_FILTER" <<'JQ'
 length == 1 and (.[0] |
-  .schema == "fm-secondmate-home-summary.v1" and .home == $home
+  .schema == "fm-secondmate-home-summary.v2" and .home == $home
   and (.generated | type) == "string"
   and (.generated_epoch | type) == "number" and .generated_epoch >= 0 and (.generated_epoch | floor) == .generated_epoch
   and (.valid | type) == "boolean" and (.state | type) == "string"

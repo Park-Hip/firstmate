@@ -216,11 +216,19 @@ write_remote_home_summary() {  # <remote-home> <generated-epoch>
   local home=$1 epoch=$2
   mkdir -p "$home/state"
   jq -n --arg home "$home" --argjson epoch "$epoch" '{
-    schema:"fm-secondmate-home-summary.v1",
+    schema:"fm-secondmate-home-summary.v2",
     generated:"2026-09-01T22:00:00Z",generated_epoch:$epoch,home:$home,
-    valid:true,reason:null,invalidity:{kind:null,ids:[]},state:"no_active_work",
-    active_children:[],decisions_open:[],holds:[],queued:[],landed:[],endpoints:[],
-    counts:{active_children:0,decisions_open:0,holds:0,queued:0,landed:0,endpoints:0},omitted:[]
+    valid:true,reason:null,invalidity:{kind:null,ids:[]},state:"captain_decision",
+    active_children:[],
+    decisions_open:[
+      {id:"remote-parked",key:"remote-parked",verb:"captain-hold",summary:"Remote parked hold",reason:"parked",hold_until:null,deferred_marker:true,explicit_deferred_marker:false,parked_style_marker:true,aged_undated_hold:false,hold_age_days:null,source:"backlog"},
+      {id:"remote-aged",key:"remote-aged",verb:"captain-hold",summary:"Remote aged hold",reason:"choose a route",hold_until:null,deferred_marker:false,explicit_deferred_marker:false,parked_style_marker:false,aged_undated_hold:true,hold_age_days:40,source:"backlog"}
+    ],holds:[],
+    queued:[
+      {id:"remote-parked",title:"Remote parked hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"parked",hold_kind:"captain",hold_until:null,deferred_marker:true,explicit_deferred_marker:false,parked_style_marker:true,aged_undated_hold:false,hold_age_days:null,captain_actionable:true,repo:"firstmate",kind:"captain"},
+      {id:"remote-aged",title:"Remote aged hold",blocked_by:null,blocked_by_ids:[],unresolved_blocker_ids:[],blocked_reason:null,hold_reason:"choose a route",hold_kind:"captain",hold_until:null,deferred_marker:false,explicit_deferred_marker:false,parked_style_marker:false,aged_undated_hold:true,hold_age_days:40,captain_actionable:true,repo:"firstmate",kind:"captain"}
+    ],landed:[],endpoints:[],
+    counts:{active_children:0,decisions_open:2,holds:0,queued:2,landed:0,endpoints:0},omitted:[]
   }' > "$home/state/home-summary.json"
 }
 
@@ -2574,7 +2582,7 @@ SH
 }
 
 test_remote_ledgers_share_one_concurrent_budget_and_fall_back_to_cache() {
-  local parent fakebin json i remote_home pid collector_pid sleeper_pid duplicate_base
+  local parent fakebin json i remote_home pid collector_pid sleeper_pid duplicate_base cache_file candidate tmp
   parent=$(make_home concurrent-remote-ledgers)
   make_remote_ledger_fleet "$parent" 5
   fakebin=$(make_remote_ledger_ssh "$parent/remote-ssh")
@@ -2588,7 +2596,38 @@ test_remote_ledgers_share_one_concurrent_budget_and_fall_back_to_cache() {
   printf '%s' "$json" | jq -e '
     (.secondmates | length) == 5
       and all(.secondmates[]; .freshness == "fresh" and .age_seconds == 100)
-  ' >/dev/null || fail "healthy remote ledgers did not project their generated-epoch ages: $json"
+      and (.decisions_open | all(.owner != "ledger-1"))
+      and (.gates | any(.id == "remote-parked" and .owner == "ledger-1" and .reason == "parked"))
+      and (.gates | any(.id == "remote-aged" and .owner == "ledger-1" and (.reason | startswith("held 40d"))))
+  ' >/dev/null || fail "healthy remote ledgers did not project their generated-epoch ages and deferred holds: $json"
+
+  cache_file=
+  remote_home=$(cd "$TMP_ROOT/remote-ledger-home-1" && pwd -P)
+  for candidate in "$parent/state/summary-cache"/*.json; do
+    if jq -e --arg home "$remote_home" '.home == $home' "$candidate" >/dev/null 2>&1; then
+      cache_file=$candidate
+      break
+    fi
+  done
+  [ -n "$cache_file" ] || fail "healthy remote read did not populate its summary cache"
+  tmp="$cache_file.tmp"
+  jq '.schema = "fm-secondmate-home-summary.v1"' "$cache_file" > "$tmp" && mv "$tmp" "$cache_file"
+  tmp="$remote_home/state/home-summary.json.tmp"
+  jq '.schema = "fm-secondmate-home-summary.v1"' "$remote_home/state/home-summary.json" > "$tmp" \
+    && mv "$tmp" "$remote_home/state/home-summary.json"
+  json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
+  printf '%s' "$json" | jq -e '
+    (.secondmates | any(.id == "ledger-1" and .state == "unknown"
+      and .provenance == "unknown" and (.reason | contains("no valid cached copy"))))
+      and (.omitted | any(.surface == "secondmate home(s) with unreadable structured state: 1"))
+  ' >/dev/null || fail "a pre-change live and cached summary was not invalidated and disclosed: $json"
+  write_remote_home_summary "$remote_home" 1000
+  json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
+  printf '%s' "$json" | jq -e '
+    (.secondmates | any(.id == "ledger-1" and .freshness == "fresh"))
+      and (.gates | any(.id == "remote-parked" and .owner == "ledger-1"))
+      and (.gates | any(.id == "remote-aged" and .owner == "ledger-1"))
+  ' >/dev/null || fail "a refreshed current-schema summary did not restore deferred remote holds: $json"
 
   duplicate_base="$TMP_ROOT/remote-ledger-home-1/state/home-summary.single"
   cp "$TMP_ROOT/remote-ledger-home-1/state/home-summary.json" "$duplicate_base"
