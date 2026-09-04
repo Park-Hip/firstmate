@@ -217,6 +217,7 @@ write_remote_home_summary() {  # <remote-home> <generated-epoch>
   mkdir -p "$home/state"
   jq -n --arg home "$home" --argjson epoch "$epoch" '{
     schema:"fm-secondmate-home-summary.v1",
+    hold_classifier_schema:"fm-captain-hold-buckets.v1",
     generated:"2026-09-01T22:00:00Z",generated_epoch:$epoch,home:$home,
     valid:true,reason:null,invalidity:{kind:null,ids:[]},state:"captain_decision",
     active_children:[],
@@ -2762,23 +2763,30 @@ test_remote_ledgers_share_one_concurrent_budget_and_fall_back_to_cache() {
   done
   [ -n "$cache_file" ] || fail "healthy remote read did not populate its summary cache"
   tmp="$cache_file.tmp"
-  jq '(.decisions_open[] | select(.verb == "captain-hold"))
-        |= del(.hold_bucket, .hold_age_days)
-      | (.queued[] | select(.hold_kind == "captain"))
-        |= del(.hold_bucket, .hold_age_days)' \
+  jq 'del(.hold_classifier_schema)' \
     "$cache_file" > "$tmp" && mv "$tmp" "$cache_file"
   tmp="$remote_home/state/home-summary.json.tmp"
-  jq '(.decisions_open[] | select(.verb == "captain-hold"))
-        |= del(.hold_bucket, .hold_age_days)
-      | (.queued[] | select(.hold_kind == "captain"))
-        |= del(.hold_bucket, .hold_age_days)' \
+  jq 'del(.hold_classifier_schema)' \
     "$remote_home/state/home-summary.json" > "$tmp" && mv "$tmp" "$remote_home/state/home-summary.json"
   json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
   printf '%s' "$json" | jq -e '
     (.secondmates | any(.id == "ledger-1" and .state == "unknown"
       and .provenance == "unknown" and (.reason | contains("no valid cached copy"))))
       and (.omitted | any(.surface == "secondmate home(s) with unreadable structured state: 1"))
-  ' >/dev/null || fail "a hold-bearing live and cached summary without aging fields was not invalidated and disclosed: $json"
+  ' >/dev/null || fail "a hold-bearing pre-classifier live and cached summary was not invalidated and disclosed: $json"
+
+  tmp="$cache_file.tmp"
+  jq '.decisions_open = [] | .queued = []' "$cache_file" > "$tmp" && mv "$tmp" "$cache_file"
+  tmp="$remote_home/state/home-summary.json.tmp"
+  jq '.decisions_open = [] | .queued = []' \
+    "$remote_home/state/home-summary.json" > "$tmp" && mv "$tmp" "$remote_home/state/home-summary.json"
+  json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
+  printf '%s' "$json" | jq -e '
+    (.secondmates | any(.id == "ledger-1" and .state == "unknown"
+      and .provenance == "unknown" and (.reason | contains("no valid cached copy"))))
+      and (.omitted | any(.surface == "secondmate home(s) with unreadable structured state: 1"))
+  ' >/dev/null || fail "an empty pre-classifier live and cached summary was not invalidated and disclosed: $json"
+
   write_remote_home_summary "$remote_home" 1000
   json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
   printf '%s' "$json" | jq -e '
