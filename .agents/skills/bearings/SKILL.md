@@ -49,7 +49,7 @@ Board answers are acted on later under the normal authority rules; this skill's 
    Contextual parked-style wording does not suppress a live decision.
    A deferred hold that is also blocked remains a disclosed Charted Next gate rather than disappearing from both buckets.
    An undated hold aged past the configured snapshot threshold likewise leaves Captain's Call for an age-labelled Charted Next gate; these are only presentation safety nets, and re-holding with `--until` remains the durable deferral.
-   Use `--all-decisions` to reveal actionable holds hidden by either presentation hint, removing each revealed safety gate from Charted Next so the buckets remain exclusive; non-actionable holds remain gated, and cross-home visibility remains subject to the snapshot's documented summary bounds.
+   Use `--all-decisions` to reveal every hold hidden by either presentation hint, including blocked holds, removing each revealed safety gate from Charted Next so the buckets remain exclusive; other non-actionable holds remain gated, and cross-home visibility remains subject to the snapshot's documented summary bounds.
    Do not scrape reports, visual-review artifacts, raw status-event tails, or visible conversation history to supplement current state.
    A queued item under `gates` only becomes "next work" when its blocker is gone and its time/date gate has arrived.
    Until then it stays queued with the reason.

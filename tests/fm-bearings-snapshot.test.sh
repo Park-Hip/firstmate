@@ -1284,6 +1284,10 @@ EOF
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-aged"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-parked"))
       and (.decisions_open | any(.[]; .id == "aging-mate/mate-due-not-required"))
+      and (.decisions_open | any(.[]; .id == "blocked-parked"))
+      and (.decisions_open | any(.[]; .id == "future-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-blocked-parked"))
+      and (.decisions_open | any(.[]; .id == "aging-mate/mate-future-parked"))
       and (.decisions_open | any(.[]; .id == "recent-call"))
       and (.decisions_open | any(.[]; .id == "contextual-call"))
       and (.decisions_open | any(.[]; .id == "contextual-not-urgent"))
@@ -1294,12 +1298,10 @@ EOF
       and (.decisions_open | any(.[]; .id == "reheld-current-call"))
       and (.decisions_open | any(.[]; .id == "legacy-old-hold"))
       and (.gates | any(.[]; .id == "parked-hold" or .id == "aged-call" or .id == "legacy-old-hold"
-          or .id == "due-superseded" or .id == "mate-parked" or .id == "mate-aged"
-          or .id == "mate-due-parked" or .id == "mate-due-not-required") | not)
-      and (.gates | any(.[]; .id == "future-parked" and .reason == "until 2026-08-01: parked"))
-      and (.gates | any(.[]; .id == "blocked-parked" and .blocked_by == "missing-blocker" and .reason == "parked"))
-      and (.gates | any(.[]; .id == "mate-future-parked" and .owner == "aging-mate" and .reason == "until 2026-08-01: parked"))
-      and (.gates | any(.[]; .id == "mate-blocked-parked" and .owner == "aging-mate" and .blocked_by == "missing-remote-blocker" and .reason == "parked"))
+          or .id == "due-superseded" or .id == "future-parked" or .id == "blocked-parked"
+          or .id == "mate-parked" or .id == "mate-aged" or .id == "mate-due-parked"
+          or .id == "mate-due-not-required" or .id == "mate-future-parked"
+          or .id == "mate-blocked-parked") | not)
   ' >/dev/null || fail "--all-decisions must reveal parked-style and aged holds without duplicating their gates: $json"
   json=$(FM_SNAPSHOT_UNDATED_HOLD_AGE_DAYS=50 run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
@@ -1326,7 +1328,12 @@ EOF
     (.gates | any(.id == "only-blocked-parked" and .blocked_by == "missing-blocker" and .reason == "parked"))
       and (.omitted | any(.surface == "captain holds marked deferred, superseded, or aged: 1"))
   ' >/dev/null || fail "a lone blocked deferred hold lacked its concrete disclosure: $json"
-  pass "a blocked deferred hold is counted in its concrete omission disclosure"
+  json=$(run "$home" "$fakebin" --json --all-decisions)
+  printf '%s' "$json" | jq -e '
+    (.decisions_open | any(.id == "only-blocked-parked" and .verb == "captain-hold"))
+      and (.gates | any(.id == "only-blocked-parked") | not)
+  ' >/dev/null || fail "--all-decisions did not reveal a blocked deferred hold: $json"
+  pass "a blocked deferred hold is disclosed by default and revealed by --all-decisions"
 }
 
 test_include_prs_is_the_only_fetch_path() {

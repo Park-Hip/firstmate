@@ -73,7 +73,7 @@ Its secondmate-home summary classifies an actionable captain hold as `captain_de
 A captain hold with a future date renders as a gate with its `until <date>:` reason.
 When the date arrives, a complete parked-style reason becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED marker remains gated regardless of date.
 A deferred or aged captain hold, including one that is also blocked, renders as a Charted Next gate and contributes to the concrete `omitted[]` disclosure.
-`--all-decisions` reveals actionable parked-style and aged holds in Captain's Call and removes their safety gates so the buckets remain exclusive; non-actionable holds remain gated.
+`--all-decisions` reveals every parked-style and aged hold in Captain's Call, including blocked holds, and removes their safety gates so the buckets remain exclusive; other non-actionable holds remain gated.
 Cross-home summaries remain bounded by `FM_SNAPSHOT_SECONDMATE_DECISIONS` and `FM_SNAPSHOT_SECONDMATE_QUEUED`, so a remote captain hold beyond those bounds may not project as a Charted Next gate.
 A remote or secondmate hold also retains the producer home's age and aging decision from the summary's capture time and threshold rather than being recomputed by the parent; re-holding it through the wrapper with `--until` remains the durable fix for both limits.
 Recently Landed excludes a record that closed while still held for the captain (surviving `hold-kind: captain` on a Done row), so answered questions do not masquerade as shipped work; a work item released before completion keeps no hold annotations and lands normally.

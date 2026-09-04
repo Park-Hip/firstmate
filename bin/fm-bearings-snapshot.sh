@@ -31,8 +31,9 @@
 # becomes live again, but an explicit SUPERSEDED / NOT REQUIRED / DEFERRED
 # marker remains gated. Any prose-deferred row, including one that is also
 # blocked, renders as a Charted Next gate and is disclosed in omitted[].
-# --all-decisions reveals actionable presentation-filtered rows without retaining
-# their gates; non-actionable rows remain gated.
+# --all-decisions reveals every presentation-filtered captain hold without retaining
+# its gate, including a hold that is otherwise non-actionable because it is blocked.
+# Other non-actionable rows remain gated.
 # Underway (in_flight) projects every main live worker plus every active child
 # from every readable secondmate ledger, independently of that home's
 # bearings_state. A home classified captain_decision because it has an open
@@ -70,7 +71,7 @@
 #   --include-prs    ALSO do live GitHub open-PR discovery + checks
 #   --fields <list>  opt in to dropped surfaces: bodies,paths,actions,endpoints
 #   --all-in-flight  include every in-flight task
-#   --all-decisions  include every actionable open decision present in the bounded snapshot
+#   --all-decisions  include every open decision and presentation-filtered captain hold
 #   --all-secondmates include every aggregated secondmate record
 #   --all-landed     include every landed record from every home (default: bounded)
 #   --all-reports    include the full scout-report inventory (default: relevant only)
@@ -150,7 +151,7 @@ For every registered secondmate, readable structured facts from its own home are
   evidence and never become current work. The provenance and freshness fields
   distinguish live and cached ledgers; a home without either is explicitly unreadable.
 Opt-in surfaces: --fields bodies|paths|actions|endpoints, --all-in-flight,
-  --all-decisions (all actionable open decisions present in the bounded snapshot),
+  --all-decisions (all open decisions and presentation-filtered captain holds),
   --all-secondmates, --all-landed, --all-reports, --all-queued, --all-recorded-prs,
   --all-unhealthy, --all-pr-repos, --include-prs (adds candidate_prs).
 Raise FM_BEARINGS_PR_LIMIT to expand per-repository open-PR results.
@@ -442,15 +443,26 @@ MODEL=$(printf '%s' "$SNAP" | jq \
             repo:(.repo // null),
             doing:((.doing // .state) | trunc(90))} ]) as $in_flight_all
   | ([ .backlog.records[]
-         | select(.structured and .captain_actionable == true)
-         | select(($all_decisions == 1) or live_captain_call)
+         | . as $record
+         | select(.structured and .hold_kind == "captain"
+                  and (.state == "queued" or
+                       (.state == "in_flight" and .current_role == "held"
+                        and ($working_ids | index($record.id) | not))))
+         | select((.captain_actionable == true and (($all_decisions == 1) or live_captain_call))
+                  or ($all_decisions == 1 and projected_deferred_hold))
          | {id,key:.id,verb:"captain-hold",
             summary:((.title + ": " + .hold_reason) | trunc(90)),owner:"(main)"} ]
-     + [ (.secondmate_current.records // [])[] as $m | $m.decisions_open[]?
-         | select(.source == "backlog" and .verb == "captain-hold")
-         | select(($all_decisions == 1) or live_captain_call)
-         | {id:($m.id + "/" + .id),key,verb,
-            summary:(((.summary // .id) + ": " + (.reason // "captain decision pending")) | trunc(90)),owner:$m.id} ]) as $decisions_all
+     + [ (.secondmate_current.records // [])[] as $m
+         | ([ $m.decisions_open[]?
+              | select(.source == "backlog" and .verb == "captain-hold")
+              | select(($all_decisions == 1) or live_captain_call)
+              | {id:($m.id + "/" + .id),key,verb,
+                 summary:(((.summary // .id) + ": " + (.reason // "captain decision pending")) | trunc(90)),owner:$m.id} ]
+            + [ $m.queued[]?
+                | select($all_decisions == 1 and .captain_actionable != true
+                         and .hold_kind == "captain" and projected_deferred_hold)
+                | {id:($m.id + "/" + .id),key:.id,verb:"captain-hold",
+                   summary:(((.title // .id) + ": " + (.hold_reason // "captain decision pending")) | trunc(90)),owner:$m.id} ])[] ]) as $decisions_all
   | ([ .backlog.records[]
          | . as $record
          | select(.structured and .hold_kind == "captain"
@@ -477,6 +489,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
              (.state == "queued" or
               (.state == "in_flight" and .current_role == "held" and ($working_ids | index($record.id) | not))))
          | select(.captain_actionable != true)
+         | select(($all_decisions == 0) or (projected_deferred_hold | not))
          | select(($all_queued == 1) or (.deferred_marker != true)
                   or (.hold_kind == "captain" and .deferred_marker == true)
                   or ((.hold_until // null) != null and .hold_until > $today))
@@ -489,6 +502,7 @@ MODEL=$(printf '%s' "$SNAP" | jq \
          | select($m.provenance.selected == "structured-home")
          | $m.queued[]?
          | select(.captain_actionable != true)
+         | select(($all_decisions == 0) or (projected_deferred_hold | not))
          | select(($all_queued == 1) or (.deferred_marker != true)
                   or (.hold_kind == "captain" and .deferred_marker == true)
                   or ((.hold_until // null) != null and .hold_until > $today))
