@@ -1,0 +1,12 @@
+SCENARIO 1: quiet working fleet with a fresh auto-arm ledger
+guard output: [silent]
+tracked watcher launched: no
+
+SCENARIO 2: stale ledger with work in flight; self-heal succeeds
+guard output: [silent]
+tracked owner record: tmux	fm-afk-daemon-984762708-1011-17828-1788552452	
+watcher beacon created: yes
+
+SCENARIO 3: stale ledger self-heal is obstructed
+first guard output: WARNING: supervision could not re-arm: a spent supervision failure episode could not be cleared. This is a supervision warning only; the guarded operation WILL still run.
+second guard output (same episode): [silent]
