@@ -1318,7 +1318,7 @@ test_blocked_deferred_hold_has_concrete_disclosure() {
 ## In flight
 
 ## Queued
-- [ ] only-blocked-parked - Blocked parked call blocked-by: missing-blocker (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
+- [ ] only-blocked-parked - Blocked parked call blocked-by: missing-blocker (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-07-11)
 
 ## Done
 EOF
@@ -1332,8 +1332,8 @@ EOF
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.id == "only-blocked-parked" and .verb == "captain-hold"))
       and (.gates | any(.id == "only-blocked-parked") | not)
-  ' >/dev/null || fail "--all-decisions did not reveal a blocked deferred hold: $json"
-  pass "a blocked deferred hold is disclosed by default and revealed by --all-decisions"
+  ' >/dev/null || fail "--all-decisions did not reveal a blocked deferred hold whose date had arrived: $json"
+  pass "a blocked deferred hold stays gated when its date arrives and is revealed by --all-decisions"
 }
 
 test_include_prs_is_the_only_fetch_path() {

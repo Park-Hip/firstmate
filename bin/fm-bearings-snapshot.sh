@@ -344,7 +344,8 @@ MODEL=$(printf '%s' "$SNAP" | jq \
     and (.explicit_deferred_marker != true)
     and ((.deferred_marker != true)
          or (.parked_style_marker == true
-             and (.hold_until // null) != null and .hold_until <= $today));
+             and (.hold_until // null) != null and .hold_until <= $today
+             and .captain_actionable != false));
   def projected_deferred_hold:
     (.deferred_marker == true or .aged_undated_hold == true)
     and (live_captain_call | not);
