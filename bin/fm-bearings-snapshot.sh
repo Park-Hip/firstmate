@@ -345,9 +345,10 @@ MODEL=$(printf '%s' "$SNAP" | jq \
     | (hold_note) as $note
     | if $note == null then $base else ($note + ": " + $base) end;
   def hold_summary($title; $base):
-    ($title | trunc(46)) + ": "
-    + ((hold_note) as $note
-       | (if $note == null then $base else ($note + ": " + $base) end) | trunc(42));
+    (hold_note) as $note
+    | if $note == null then (($title + ": " + $base) | trunc(90))
+      else (($title | trunc(46)) + ": " + (($note + ": " + $base) | trunc(42)))
+      end;
   def as_gate($owner):
     {id, title:(.title | trunc(60)),
      blocked_by:((.unresolved_blocker_ids // []) | if length > 0 then join(",") else "-" end | trunc(120)),

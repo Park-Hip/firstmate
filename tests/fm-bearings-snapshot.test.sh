@@ -1354,10 +1354,10 @@ test_revealed_deferred_holds_show_their_deferral_reason() {
 
 ## Queued
 - [ ] reveal-blocked - Blocked parked call blocked-by: missing-blocker (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain)
-- [ ] reveal-future - Parked call for later (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-12-01)
+- [ ] reveal-future - 1234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890 (repo: firstmate) (kind: captain) (hold: parked) (hold-kind: captain) (hold-until: 2026-12-01)
 - [ ] reveal-aged - Aged undated call (repo: firstmate) (kind: captain) (since 2026-06-01) (hold: choose a route) (hold-kind: captain)
   Captain hold set: 2026-06-01T00:00:00Z
-- [ ] reveal-live - Genuine live call (repo: firstmate) (kind: captain) (hold: choose a cache) (hold-kind: captain)
+- [ ] reveal-live - 123456789012345678901234567890123456789012345678901234567890 (repo: firstmate) (kind: captain) (hold: choose A) (hold-kind: captain)
 
 ## Done
 EOF
@@ -1374,12 +1374,13 @@ EOF
   ' >/dev/null || fail "a revealed aged hold must show its age: $json"
   printf '%s' "$json" | jq -e '
     (.decisions_open | any(.id == "reveal-live"
-       and (.summary | contains("choose a cache"))
+       and .summary == "123456789012345678901234567890123456789012345678901234567890: choose A"
        and (.summary | contains("blocked-by") or contains("until ") or contains("held ") | not)))
-  ' >/dev/null || fail "a genuinely live call must not be annotated as deferred: $json"
+  ' >/dev/null || fail "a long-titled live call must remain complete and unannotated: $json"
   json=$(run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
     ([.decisions_open[].id] == ["reveal-live"])
+      and (.decisions_open[0].summary == "123456789012345678901234567890123456789012345678901234567890: choose A")
       and (.gates | any(.id == "reveal-blocked"))
       and (.gates | any(.id == "reveal-future"))
       and (.gates | any(.id == "reveal-aged"))
