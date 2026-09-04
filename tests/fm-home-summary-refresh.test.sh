@@ -124,7 +124,7 @@ wait_for_ledger_generation() {  # <generated> [tenths]
 
 run_writer "$NOW_ONE" "$EPOCH_ONE" || fail "initial home-summary publication failed"
 jq -e --arg home "$HOME_DIR" --arg now "$NOW_ONE" --argjson epoch "$EPOCH_ONE" '
-  .schema == "fm-secondmate-home-summary.v2"
+  .schema == "fm-secondmate-home-summary.v1"
   and .home == $home
   and .generated == $now
   and .generated_epoch == $epoch
@@ -659,7 +659,7 @@ PATH="$FAKEBIN:$PATH" FM_ROOT_OVERRIDE="$ROOT" FM_HOME="$COST_HOME" \
 [ -f "$COST_HOME/state/home-summary.json" ] \
   || fail "an accumulated home did not publish within a 30-second deadline: $(cat "$COST_HOME/state/.home-summary-refresh.log" 2>/dev/null)"
 jq -e --arg home "$COST_HOME" '
-  .schema == "fm-secondmate-home-summary.v2"
+  .schema == "fm-secondmate-home-summary.v1"
   and .home == $home
   and any(.decisions_open[]; .key == "cost-gate")
 ' "$COST_HOME/state/home-summary.json" >/dev/null \
@@ -721,7 +721,7 @@ elapsed=$(( $(date +%s) - started ))
 [ ! -e "$TMP_ROOT/stalled-ssh.called" ] \
   || fail "the producer issued a remote per-task state probe"
 jq -e '
-  .schema == "fm-secondmate-home-summary.v2"
+  .schema == "fm-secondmate-home-summary.v1"
   and .valid == false
   and .state == "unknown"
   and .invalidity.kind == "child_current_unavailable"

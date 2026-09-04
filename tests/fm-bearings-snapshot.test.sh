@@ -216,7 +216,7 @@ write_remote_home_summary() {  # <remote-home> <generated-epoch>
   local home=$1 epoch=$2
   mkdir -p "$home/state"
   jq -n --arg home "$home" --argjson epoch "$epoch" '{
-    schema:"fm-secondmate-home-summary.v2",
+    schema:"fm-secondmate-home-summary.v1",
     generated:"2026-09-01T22:00:00Z",generated_epoch:$epoch,home:$home,
     valid:true,reason:null,invalidity:{kind:null,ids:[]},state:"captain_decision",
     active_children:[],
@@ -2637,16 +2637,23 @@ test_remote_ledgers_share_one_concurrent_budget_and_fall_back_to_cache() {
   done
   [ -n "$cache_file" ] || fail "healthy remote read did not populate its summary cache"
   tmp="$cache_file.tmp"
-  jq '.schema = "fm-secondmate-home-summary.v1"' "$cache_file" > "$tmp" && mv "$tmp" "$cache_file"
+  jq '(.decisions_open[] | select(.verb == "captain-hold"))
+        |= del(.explicit_deferred_marker, .parked_style_marker, .aged_undated_hold, .hold_age_days)
+      | (.queued[] | select(.hold_kind == "captain"))
+        |= del(.explicit_deferred_marker, .parked_style_marker, .aged_undated_hold, .hold_age_days)' \
+    "$cache_file" > "$tmp" && mv "$tmp" "$cache_file"
   tmp="$remote_home/state/home-summary.json.tmp"
-  jq '.schema = "fm-secondmate-home-summary.v1"' "$remote_home/state/home-summary.json" > "$tmp" \
-    && mv "$tmp" "$remote_home/state/home-summary.json"
+  jq '(.decisions_open[] | select(.verb == "captain-hold"))
+        |= del(.explicit_deferred_marker, .parked_style_marker, .aged_undated_hold, .hold_age_days)
+      | (.queued[] | select(.hold_kind == "captain"))
+        |= del(.explicit_deferred_marker, .parked_style_marker, .aged_undated_hold, .hold_age_days)' \
+    "$remote_home/state/home-summary.json" > "$tmp" && mv "$tmp" "$remote_home/state/home-summary.json"
   json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
   printf '%s' "$json" | jq -e '
     (.secondmates | any(.id == "ledger-1" and .state == "unknown"
       and .provenance == "unknown" and (.reason | contains("no valid cached copy"))))
       and (.omitted | any(.surface == "secondmate home(s) with unreadable structured state: 1"))
-  ' >/dev/null || fail "a pre-change live and cached summary was not invalidated and disclosed: $json"
+  ' >/dev/null || fail "a hold-bearing live and cached summary without aging fields was not invalidated and disclosed: $json"
   write_remote_home_summary "$remote_home" 1000
   json=$(run_remote_ledger_bearings "$parent" "$fakebin" 1100)
   printf '%s' "$json" | jq -e '

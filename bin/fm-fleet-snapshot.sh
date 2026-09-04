@@ -88,9 +88,9 @@
 #     reconcile_inventory independently of projection trust.
 #     Actionable captain holds
 #     appear in decisions_open; blocked captain holds remain queued with metadata.
-#     Structured-home input must use fm-secondmate-home-summary.v2; an older live
-#     ledger or cached copy is invalid and leaves the home explicitly unreadable
-#     until its producer publishes the current schema.
+#     Structured-home input must carry the current hold-aging fields; an older
+#     live ledger or cached copy containing captain holds without those fields is
+#     invalid and leaves the home explicitly unreadable until its producer refreshes it.
 #   secondmate_landed: {records[],truncated[],unreadable[],partial[]} - the
 #     compatibility landed-work roll-up derived from secondmate_current. Readable
 #     structured homes are partial, not unreadable, when an unavailable child state
@@ -237,9 +237,10 @@ count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Every sampled remote home's state/home-summary.json is fetched concurrently
 under one FM_SNAPSHOT_BUDGET (default 5 seconds), with a valid prior copy under
 FM_SNAPSHOT_CACHE_DIR used when the live read fails, is invalid, or consumes the
-budget. Only fm-secondmate-home-summary.v2 ledgers and cached copies are valid;
-an older schema is rejected. A home with neither a valid current ledger nor a
-valid current cached copy is reported unreadable with the reason; collection
+budget. Ledgers and cached copies containing captain holds must carry the
+current hold-aging fields; older hold-bearing summaries are rejected. A home
+with neither a valid current ledger nor a valid current cached copy is reported
+unreadable with the reason; collection
 never computes a summary in that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
@@ -1050,7 +1051,7 @@ secondmate_home_summary_json() {  # <backlog-json-file> <tasks-json-file>
        elif ($holds_all | length) > 0 then "externally_held"
        else "no_active_work" end) as $state
     | {
-        schema:"fm-secondmate-home-summary.v2",
+        schema:"fm-secondmate-home-summary.v1",
         generated:$generated,
         generated_epoch:$generated_epoch,
         home:$home,
@@ -1321,14 +1322,28 @@ prepare_remote_summary_collection() {  # <sampled-row-json-lines>
   SNAPSHOT_COLLECT_DIR=$(umask 077; mktemp -d "${TMPDIR:-/tmp}/fm-fleet-ledgers.XXXXXX") || return 1
   SNAPSHOT_SUMMARY_FILTER="$SNAPSHOT_COLLECT_DIR/summary-filter.jq"
   cat > "$SNAPSHOT_SUMMARY_FILTER" <<'JQ'
+def current_hold_aging_fields:
+  (.deferred_marker | type) == "boolean"
+  and (.explicit_deferred_marker | type) == "boolean"
+  and (.parked_style_marker | type) == "boolean"
+  and (.aged_undated_hold | type) == "boolean"
+  and (.hold_age_days == null
+       or ((.hold_age_days | type) == "number"
+           and (.hold_age_days | floor) == .hold_age_days));
 length == 1 and (.[0] |
-  .schema == "fm-secondmate-home-summary.v2" and .home == $home
+  .schema == "fm-secondmate-home-summary.v1" and .home == $home
   and (.generated | type) == "string"
   and (.generated_epoch | type) == "number" and .generated_epoch >= 0 and (.generated_epoch | floor) == .generated_epoch
   and (.valid | type) == "boolean" and (.state | type) == "string"
   and (.invalidity | type) == "object" and (.invalidity.ids | type) == "array"
   and (.active_children | type) == "array" and (.decisions_open | type) == "array"
   and (.holds | type) == "array" and (.queued | type) == "array"
+  and (all(.decisions_open[];
+        if .source == "backlog" and .verb == "captain-hold"
+        then current_hold_aging_fields else true end))
+  and (all(.queued[];
+        if .hold_kind == "captain"
+        then current_hold_aging_fields else true end))
   and (.landed | type) == "array" and (.endpoints | type) == "array"
   and (.counts | type) == "object" and (.omitted | type) == "array"
 )
