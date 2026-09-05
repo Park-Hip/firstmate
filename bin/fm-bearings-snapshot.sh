@@ -331,6 +331,11 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   --argjson candidate_prs "$CANDIDATE_PRS" '
   def trunc($n): if . == null then null else
     (tostring | gsub("\\s+"; " ") | if (length > $n) then (.[:$n] + "…") else . end) end;
+  def fit($n):
+    tostring | gsub("\\s+"; " ")
+    | if $n <= 0 then ""
+      elif length > $n then (if $n == 1 then "…" else (.[:($n - 1)] + "…") end)
+      else . end;
   def live_captain_call: .hold_bucket == "live";
   def projected_deferred_hold:
     .hold_bucket != null and .hold_bucket != "live";
@@ -348,7 +353,13 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   def hold_summary($title; $base):
     (hold_note) as $note
     | if $note == null then (($title + ": " + $base) | trunc(90))
-      else (($title | trunc(46)) + ": " + (($note + ": " + $base) | trunc(42)))
+      else ($note | length) as $note_n
+      | (86 - $note_n) as $context_n
+      | if $context_n < 2 then ($note | fit(90))
+        else ([46, ($context_n / 2 | floor)] | min) as $title_n
+        | (($title | fit($title_n)) + ": " + $note + ": "
+           + ($base | fit($context_n - $title_n)))
+        end
       end;
   def as_gate($owner):
     {id, title:(.title | trunc(60)),
@@ -452,8 +463,12 @@ MODEL=$(printf '%s' "$SNAP" | jq \
                  summary:hold_summary((.summary // .id);
                                       (.reason // "captain decision pending")),owner:$m.id} ]
             + [ $m.queued[]?
-                | select($all_decisions == 1 and .hold_kind == "captain"
-                         and projected_deferred_hold)
+                | select($all_decisions == 1 and .hold_kind == "captain")
+                | select(.id as $id
+                         | [$m.decisions_open[]?
+                            | select(.source == "backlog" and .verb == "captain-hold")
+                            | .id]
+                         | index($id) | not)
                 | {id:($m.id + "/" + .id),key:.id,verb:"captain-hold",
                    summary:hold_summary((.title // .id);
                                         (.hold_reason // "captain decision pending")),owner:$m.id} ])[] ]) as $decisions_all
