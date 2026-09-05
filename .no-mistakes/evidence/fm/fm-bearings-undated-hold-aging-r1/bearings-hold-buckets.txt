@@ -1,0 +1,52 @@
+=== Default Bearings board ===
+schema: fm-bearings.v1
+home: .tmp-test-evidence/home
+generated: "2026-07-11T18:00:00Z"
+prs: "not_requested (run: /bearings include PRs)"
+in_flight: []
+secondmates: []
+secondmate_reconcile: []
+decisions_open[2]{id,key,verb,summary,owner}:
+  live-wording,live-wording,captain-hold,"Release decision: non-deferred release choice",(main)
+  fresh-rehold,fresh-rehold,captain-hold,"Fresh hold on old task: choose again",(main)
+landed: []
+gates[3]{id,title,blocked_by,reason,owner}:
+  blocked-call,Dependency choice,blocker-one,"blocked-by blocker-one: choose fallback",(main)
+  dated-call,Later rollout decision,"-","until 2026-08-01: choose rollout",(main)
+  aged-call,Old undated decision,"-","held 40d: choose route",(main)
+reports: []
+recorded_prs: []
+omitted[7]{surface,reveal}:
+  backlog item bodies,"--fields bodies"
+  task paths,"--fields paths"
+  watch/steer actions,"--fields actions"
+  healthy endpoint detail,"--fields endpoints"
+  full scout-report inventory,"--all-reports"
+  "captain holds bucketed blocked, dated, or aged: 3","--all-decisions"
+  live PR discovery + checks,"--include-prs"
+
+=== Bearings board with --all-decisions ===
+schema: fm-bearings.v1
+home: .tmp-test-evidence/home
+generated: "2026-07-11T18:00:00Z"
+prs: "not_requested (run: /bearings include PRs)"
+in_flight: []
+secondmates: []
+secondmate_reconcile: []
+decisions_open[5]{id,key,verb,summary,owner}:
+  live-wording,live-wording,captain-hold,"Release decision: non-deferred release choice",(main)
+  blocked-call,blocked-call,captain-hold,"Dependency choice: blocked-by blocker-one: choose fallback",(main)
+  dated-call,dated-call,captain-hold,"Later rollout decision: until 2026-08-01: choose rollout",(main)
+  aged-call,aged-call,captain-hold,"Old undated decision: held 40d: choose route",(main)
+  fresh-rehold,fresh-rehold,captain-hold,"Fresh hold on old task: choose again",(main)
+landed: []
+gates: []
+reports: []
+recorded_prs: []
+omitted[6]{surface,reveal}:
+  backlog item bodies,"--fields bodies"
+  task paths,"--fields paths"
+  watch/steer actions,"--fields actions"
+  healthy endpoint detail,"--fields endpoints"
+  full scout-report inventory,"--all-reports"
+  live PR discovery + checks,"--include-prs"
