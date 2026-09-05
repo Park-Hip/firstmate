@@ -83,11 +83,11 @@
 #     freshness is "cached" only for the cache source, and observed_at/age_seconds
 #     come from the selected summary's generation. Every successfully sampled home also carries
 #     reconcile_inventory independently of projection trust.
-#     Actionable captain holds
-#     appear in decisions_open; blocked captain holds remain queued with metadata.
-#     Structured-home input must carry the current hold-aging fields; an older
-#     live ledger or cached copy containing captain holds without those fields is
-#     invalid and leaves the home explicitly unreadable until its producer refreshes it.
+#     Actionable captain holds appear in decisions_open; every captain hold remains
+#     in the bounded queued inventory with its structured classification metadata.
+#     Structured-home input must declare the current hold-classifier schema; an
+#     older live ledger or cached copy is invalid even when it contains no captain
+#     holds, and leaves the home explicitly unreadable until its producer refreshes it.
 #   secondmate_landed: {records[],truncated[],unreadable[],partial[]} - the
 #     compatibility landed-work roll-up derived from secondmate_current. Readable
 #     structured homes are partial, not unreadable, when an unavailable child state
@@ -227,18 +227,18 @@ Its invalidity object names the normalized failure kind and affected ids.
 Actionable tasks-axi captain holds appear as decisions_open and stay visible in
 queued with hold_reason, hold_kind, hold_until,
 hold_bucket, hold_age_days, and plural blocker fields for downstream
-projections. A captain hold is actionable only
-when every blocker is Done and any hold-until date has arrived.
+projections. A captain hold is actionable only when every blocker is Done, any
+hold-until date has arrived, and an undated hold remains below the aging threshold.
 Cross-home collection uses FM_SNAPSHOT_SECONDMATES (default 20, 0 lifts the
 count bound) and FM_SNAPSHOT_SECONDMATE_MAX_BYTES.
 Every sampled remote home's state/home-summary.json is fetched concurrently
 under one FM_SNAPSHOT_BUDGET (default 5 seconds), with a valid prior copy under
 FM_SNAPSHOT_CACHE_DIR used when the live read fails, is invalid, or consumes the
-budget. Ledgers and cached copies containing captain holds must carry the
-current hold-aging fields; older hold-bearing summaries are rejected. A home
-with neither a valid current ledger nor a valid current cached copy is reported
-unreadable with the reason; collection
-never computes a summary in that home.
+budget. Every ledger and cached copy must declare the current hold-classifier
+schema, even when it contains no captain holds; older summaries are rejected. A
+home with neither a valid current ledger nor a valid current cached copy is
+reported unreadable with the reason; collection never computes a summary in
+that home.
 Each local per-task current-state read is bounded by FM_SNAPSHOT_CREW_STATE_TIMEOUT
 (default 10 seconds); a read that hits the bound reports state unknown. Local task
 observations run concurrently, up to FM_SNAPSHOT_LOCAL_READ_CONCURRENCY (default 8).
