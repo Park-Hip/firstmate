@@ -4177,6 +4177,10 @@ const secondCtx = {
   sessionManager: { getSessionFile: () => `${home}/second.jsonl`, getEntries: () => secondEntries },
 };
 
+// Use the live parent as lock owner so each ownership check must traverse at
+// least one real ps subprocess; a self-owned lock would return before the
+// asynchronous boundary this regression needs to hold open.
+writeFileSync(`${home}/state/.lock`, `${process.ppid}\n`);
 await fire("session_start", {}, firstCtx);
 let finishWakePrompt;
 globalThis.__fmOnBranchPrompt = () => new Promise((resolve) => { finishWakePrompt = resolve; });
@@ -4302,11 +4306,12 @@ if (!appendFailed.isError || !appendFailed.content[0].text.includes("outcome sto
 if (sentToMain.length !== 0 || mainEntries.length !== 0) throw new Error("a failed append still delivered something visible");
 if (outcomeScript(["list", "--recent", "50"]) !== "") throw new Error("a failed append still left a stored row");
 
-// 2. The cursor advance fails AFTER the row is durable and delivered. The
-// branch is told, the row stays in the store exactly once, and the next
-// reconciliation completes the delivery rather than losing it.
+// 2. The cursor advance fails AFTER a routine row is durable and delivered.
+// The branch is told, the row stays in the store exactly once, and its durable
+// sequence receipt lets the next reconciliation advance the cursor without
+// sending the routine note a second time.
 armStoreFailure("mark-read");
-const markFailed = await report.execute("mark-read-fails", { task: "branch-driver", verdict: "captain", summary: "cursor advance must fail" }, undefined, undefined, {});
+const markFailed = await report.execute("mark-read-fails", { task: "branch-driver", verdict: "routine", summary: "cursor advance must fail" }, undefined, undefined, {});
 if (!markFailed.isError || !markFailed.content[0].text.includes("visible delivery or cursor advancement failed")) {
   throw new Error(`a failed cursor advance did not surface as an error: ${JSON.stringify(markFailed)}`);
 }
@@ -4316,19 +4321,20 @@ if (afterFailure.length !== 1 || afterFailure[0].summary !== "cursor advance mus
 }
 const failedSeq = afterFailure[0].seq;
 if (outcomeScript(["unread"]) === "") throw new Error("a failed cursor advance still marked the row read");
+if (sentToMain.length !== 1) throw new Error(`the routine outcome was not delivered once before cursor failure: ${JSON.stringify(sentToMain)}`);
+const receipts = () => mainEntries.filter((entry) => entry.customType === "fm-branch-routine-delivery" && entry.data.seq === failedSeq);
+if (receipts().length !== 1) throw new Error(`routine delivery did not persist one sequence receipt: ${JSON.stringify(mainEntries)}`);
 
-// 3. Recovery: the same row is delivered exactly once and the cursor now
-// advances, so nothing is lost and nothing is doubled.
+// 3. Recovery observes the receipt, does not resend the routine note, and
+// advances the cursor. Further reconciliation remains a no-op.
 armStoreFailure("");
 await fire("turn_end", {}, defaultSessionCtx);
-const visible = mainEntries.filter((entry) => entry.customType === "fm-branch-visible-outcome" && entry.data.seq === failedSeq);
-if (visible.length !== 1) {
-  throw new Error(`the recovered captain outcome is not present exactly once: ${JSON.stringify(visible)}`);
-}
+if (sentToMain.length !== 1) throw new Error(`recovery duplicated the routine outcome: ${JSON.stringify(sentToMain)}`);
+if (receipts().length !== 1) throw new Error(`recovery duplicated the routine receipt: ${JSON.stringify(receipts())}`);
 if (outcomeScript(["unread"]) !== "") throw new Error("recovery did not advance the read cursor");
 await fire("turn_end", {}, defaultSessionCtx);
-if (mainEntries.filter((entry) => entry.customType === "fm-branch-visible-outcome" && entry.data.seq === failedSeq).length !== 1) {
-  throw new Error("a later reconciliation delivered the recovered outcome a second time");
+if (sentToMain.length !== 1 || receipts().length !== 1) {
+  throw new Error("a later reconciliation delivered the recovered routine outcome a second time");
 }
 finishWakePrompt();
 await offer.settlement.then(() => null, () => null);

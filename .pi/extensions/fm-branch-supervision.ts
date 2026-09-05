@@ -146,6 +146,7 @@ const MIRROR_MESSAGE_CAP = 4000;
 const MERGE_NOTE_BOAT = "⛵";
 const VISIBLE_OUTCOME_ANCHOR = "⚓";
 const VISIBLE_OUTCOME_ENTRY_TYPE = "fm-branch-visible-outcome";
+const ROUTINE_DELIVERY_RECEIPT_TYPE = "fm-branch-routine-delivery";
 // The processing half of the captain-outcome contract. The visible entry
 // above is the DISPLAY: crash-safe and exact-once. This hidden, typed request
 // is the PROCESSING: it opens the one turn in which main acts on the outcome,
@@ -882,7 +883,24 @@ export default function (pi: ExtensionAPI) {
     });
   }
 
-  function deliverRoutineOutcome(row: OutcomeRow): void {
+  // Routine delivery uses sendMessage for its established main-context
+  // semantics, then records the same sequence in the session before the first
+  // await. If the asynchronous cursor command fails, reconciliation can prove
+  // that this session already received the note instead of sending it again.
+  function ensureRoutineOutcome(row: OutcomeRow): boolean {
+    if (!currentMainSession || row.verdict !== "routine") return false;
+    let matching = false;
+    for (const entry of currentMainSession.getEntries()) {
+      if (entry.type !== "custom" || entry.customType !== ROUTINE_DELIVERY_RECEIPT_TYPE) continue;
+      const entrySeq = entry.data && typeof entry.data === "object"
+        ? (entry.data as { seq?: unknown }).seq
+        : undefined;
+      if (entrySeq !== row.seq) continue;
+      const recorded = parseVisibleOutcomeRecord(entry.data);
+      if (!recorded || !sameOutcome(recorded, row)) return false;
+      matching = true;
+    }
+    if (matching) return true;
     const message = {
       customType: "fm-branch-merge",
       content: `${MERGE_NOTE_BOAT} ${row.task}: ${row.summary}`,
@@ -890,6 +908,17 @@ export default function (pi: ExtensionAPI) {
     };
     if (mainStreaming) pi.sendMessage(message, { deliverAs: "nextTurn" });
     else pi.sendMessage(message, {});
+    const record: VisibleOutcomeRecord = { version: 1, ...row };
+    try {
+      pi.appendEntry(ROUTINE_DELIVERY_RECEIPT_TYPE, record);
+    } catch {
+      return false;
+    }
+    return currentMainSession.getEntries().some((entry) => {
+      if (entry.type !== "custom" || entry.customType !== ROUTINE_DELIVERY_RECEIPT_TYPE) return false;
+      const recorded = parseVisibleOutcomeRecord(entry.data);
+      return recorded !== null && sameOutcome(recorded, row);
+    });
   }
 
   // Captain rows that are read (their visible entry exists) but not yet
@@ -1012,8 +1041,8 @@ export default function (pi: ExtensionAPI) {
         if (!(await generationOwnsLock(expectedGeneration))) return false;
         if (row.verdict === "captain") {
           if (!ensureVisibleCaptainOutcome(row)) return false;
-        } else {
-          deliverRoutineOutcome(row);
+        } else if (!ensureRoutineOutcome(row)) {
+          return false;
         }
         if (!(await runOutcomeScript(["mark-read", "--through", String(row.seq)])).ok) return false;
       }
