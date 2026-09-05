@@ -371,7 +371,11 @@ async function lockOwnership(): Promise<LockOwnership> {
   if (verdict) return verdict;
   let pid = String(process.pid);
   for (let i = 0; i < LOCK_ANCESTRY_DEPTH; i += 1) {
-    if (pid === lockPid) return ownershipVerdict(lockPid, true);
+    if (pid === lockPid) {
+      const current = readLockPid();
+      if (current.verdict || current.lockPid !== lockPid) return current.verdict ?? "other";
+      return ownershipVerdict(lockPid, true);
+    }
     pid = await parentPid(pid);
     if (!pid || pid === "1") break;
   }
@@ -777,7 +781,8 @@ export default function (pi: ExtensionAPI) {
 
   async function generationOwnsLock(expectedGeneration: number): Promise<boolean> {
     if (shuttingDown || expectedGeneration !== generation) return false;
-    return (await lockOwnership()) === "owned";
+    const ownership = await lockOwnership();
+    return !shuttingDown && expectedGeneration === generation && ownership === "owned";
   }
 
   // The synchronous counterpart, for the two places Pi's own API is

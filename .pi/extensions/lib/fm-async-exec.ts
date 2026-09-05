@@ -30,12 +30,13 @@ export interface AsyncExecOptions {
   /** Written to the child's stdin, which is closed either way. */
   input?: string;
   /**
-   * Upper bound on captured stdout, mirroring spawnSync's maxBuffer: a child
-   * that exceeds it is killed and reported as a failure rather than allowed
-   * to grow without limit. Unset means no bound.
+   * Upper bound on each captured output stream, mirroring spawnSync's
+   * maxBuffer. Defaults to 1 MiB.
    */
   maxBuffer?: number;
 }
+
+const DEFAULT_MAX_BUFFER = 1024 * 1024;
 
 export function runCommandAsync(
   command: string,
@@ -45,6 +46,9 @@ export function runCommandAsync(
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    const maxBuffer = options.maxBuffer ?? DEFAULT_MAX_BUFFER;
     let settled = false;
     const finish = (status: number | null, detail = ""): void => {
       if (settled) return;
@@ -64,15 +68,27 @@ export function runCommandAsync(
     }
     child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", (chunk: string) => {
-      stdout += chunk;
-      if (options.maxBuffer !== undefined && stdout.length > options.maxBuffer) {
+      if (settled) return;
+      const bytes = Buffer.byteLength(chunk, "utf8");
+      if (stdoutBytes + bytes > maxBuffer) {
         child.kill();
-        finish(null, `stdout exceeded ${options.maxBuffer} bytes`);
+        finish(null, `stdout exceeded ${maxBuffer} bytes`);
+        return;
       }
+      stdout += chunk;
+      stdoutBytes += bytes;
     });
     child.stderr?.setEncoding("utf8");
     child.stderr?.on("data", (chunk: string) => {
+      if (settled) return;
+      const bytes = Buffer.byteLength(chunk, "utf8");
+      if (stderrBytes + bytes > maxBuffer) {
+        child.kill();
+        finish(null, `stderr exceeded ${maxBuffer} bytes`);
+        return;
+      }
       stderr += chunk;
+      stderrBytes += bytes;
     });
     // "close" rather than "exit": it fires once the captured stdio streams are
     // drained, so no output is lost the way an early "exit" would lose it.

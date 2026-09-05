@@ -4142,16 +4142,31 @@ EOF
 }
 
 test_session_replacement_during_delivery_neither_loses_nor_duplicates() {
-  local repo home out status
+  local repo home fakebin out status real_ps
   repo="$TMP_ROOT/delivery-replacement-root"
   home="$TMP_ROOT/delivery-replacement-home"
-  mkdir -p "$home/state" "$home/config"
+  fakebin="$home/fakebin"
+  real_ps=$(command -v ps)
+  mkdir -p "$home/state" "$home/config" "$fakebin"
   install_pi_branch_extension_fixture "$repo"
-  PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+  cat > "$fakebin/ps" <<'SH'
+#!/bin/sh
+if [ -f "$FM_TEST_PS_ARM" ]; then
+  rm -f "$FM_TEST_PS_ARM"
+  : > "$FM_TEST_PS_ENTERED"
+  while [ ! -f "$FM_TEST_PS_RELEASE" ]; do sleep 0.01; done
+fi
+exec "$FM_TEST_REAL_PS" "$@"
+SH
+  chmod +x "$fakebin/ps"
+  PATH="$fakebin:$PATH" PLUGIN="$repo/.pi/extensions/fm-branch-supervision.ts" FM_HOME="$home" FM_ROOT_OVERRIDE="$ROOT" \
+    FM_TEST_REAL_PS="$real_ps" FM_TEST_PS_ARM="$home/state/ps-arm" \
+    FM_TEST_PS_ENTERED="$home/state/ps-entered" FM_TEST_PS_RELEASE="$home/state/ps-release" \
     DRIVER_PRELUDE="$DRIVER_PRELUDE" node --input-type=module > "$TMP_ROOT/node-output" 2>&1 <<'EOF'
 const prelude = process.env.DRIVER_PRELUDE;
 await eval(`(async () => { ${prelude}; globalThis.__t = { fire, dispatch, settle, outcomeScript, sentToMain, mainEntries, home }; })()`);
 const { fire, dispatch, settle, outcomeScript, sentToMain, mainEntries, home } = globalThis.__t;
+import { existsSync, writeFileSync } from "node:fs";
 
 const firstEntries = [];
 const firstCtx = {
@@ -4173,6 +4188,7 @@ const toolGeneration = 1;
 
 // A delivery that is still in flight when the captain replaces the session
 // (/new, /resume, /fork, reload) must stop acting into the replaced session.
+writeFileSync(process.env.FM_TEST_PS_ARM, "");
 const inFlight = report.execute(
   "replaced-mid-delivery",
   { task: "branch-driver", verdict: "captain", summary: "reported as the session was replaced" },
@@ -4180,8 +4196,11 @@ const inFlight = report.execute(
   undefined,
   {},
 );
+await settle(() => existsSync(process.env.FM_TEST_PS_ENTERED), "in-flight ownership subprocess");
 await fire("session_shutdown", {});
-await fire("session_start", {}, secondCtx);
+const replacementStart = fire("session_start", {}, secondCtx);
+writeFileSync(process.env.FM_TEST_PS_RELEASE, "");
+await replacementStart;
 const replaced = await inFlight;
 if (!replaced.isError) {
   throw new Error(`a report from the replaced session was accepted: ${JSON.stringify(replaced)}`);
