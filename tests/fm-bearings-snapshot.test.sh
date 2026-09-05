@@ -2041,27 +2041,39 @@ EOF
       and ([.queued[] | select(.hold_bucket != null)] | length) == 4
   ' >/dev/null || fail "working captain holds were filtered from the secondmate summary: $summary"
 
-  json=$(run "$home" "$fakebin" --json --all-queued)
+  json=$(run "$home" "$fakebin" --json)
   printf '%s' "$json" | jq -e '
-    (.decisions_open | any(.id == "working-live"))
+    ([.in_flight[].id] | contains([
+      "working-live", "working-blocked", "working-dated", "working-aged",
+      "working-mate/working-live", "working-mate/working-blocked",
+      "working-mate/working-dated", "working-mate/working-aged"]))
+      and (.decisions_open | any(.id == "working-live"))
       and (.decisions_open | any(.id == "working-mate/working-live"))
-      and (.gates | any(.id == "working-blocked" and .owner == "(main)" and (.reason | startswith("blocked-by missing-work"))))
-      and (.gates | any(.id == "working-dated" and .owner == "(main)" and (.reason | startswith("until 2026-08-01"))))
-      and (.gates | any(.id == "working-aged" and .owner == "(main)" and (.reason | startswith("held 40d"))))
-      and (.gates | any(.id == "working-blocked" and .owner == "working-mate"))
-      and (.gates | any(.id == "working-dated" and .owner == "working-mate"))
-      and (.gates | any(.id == "working-aged" and .owner == "working-mate"))
-  ' >/dev/null || fail "working captain holds did not surface in their default buckets: $json"
+      and ([.decisions_open[] | select(.id == "working-blocked" or .id == "working-dated" or .id == "working-aged"
+          or .id == "working-mate/working-blocked" or .id == "working-mate/working-dated"
+          or .id == "working-mate/working-aged")] | length) == 0
+      and ([.gates[] | select(.id == "working-live")] | length) == 0
+      and ([.gates[] | select(.id == "working-blocked" and .owner == "(main)" and (.reason | startswith("blocked-by missing-work")))] | length) == 1
+      and ([.gates[] | select(.id == "working-dated" and .owner == "(main)" and (.reason | startswith("until 2026-08-01")))] | length) == 1
+      and ([.gates[] | select(.id == "working-aged" and .owner == "(main)" and (.reason | startswith("held 40d")))] | length) == 1
+      and ([.gates[] | select(.id == "working-blocked" and .owner == "working-mate")] | length) == 1
+      and ([.gates[] | select(.id == "working-dated" and .owner == "working-mate")] | length) == 1
+      and ([.gates[] | select(.id == "working-aged" and .owner == "working-mate")] | length) == 1
+  ' >/dev/null || fail "working captain holds did not surface in Underway and exactly one default decision bucket: $json"
 
   expanded=$(run "$home" "$fakebin" --json --all-decisions --all-queued)
   printf '%s' "$expanded" | jq -e '
-    ([.decisions_open[].id]
-      | contains(["working-live", "working-blocked", "working-dated", "working-aged",
-                  "working-mate/working-live", "working-mate/working-blocked",
-                  "working-mate/working-dated", "working-mate/working-aged"]))
+    ([.in_flight[].id] | contains([
+      "working-live", "working-blocked", "working-dated", "working-aged",
+      "working-mate/working-live", "working-mate/working-blocked",
+      "working-mate/working-dated", "working-mate/working-aged"]))
+      and ([.decisions_open[].id]
+        | contains(["working-live", "working-blocked", "working-dated", "working-aged",
+                    "working-mate/working-live", "working-mate/working-blocked",
+                    "working-mate/working-dated", "working-mate/working-aged"]))
       and ([.gates[] | select(.id == "working-live" or .id == "working-blocked"
           or .id == "working-dated" or .id == "working-aged")] | length) == 0
-  ' >/dev/null || fail "--all-decisions did not reveal every working captain hold gate-free: $expanded"
+  ' >/dev/null || fail "--all-decisions did not keep working holds Underway and reveal each gate-free: $expanded"
   pass "working captain holds retain main and secondmate bucket surfaces"
 }
 

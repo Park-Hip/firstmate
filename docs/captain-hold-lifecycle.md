@@ -73,7 +73,8 @@ Its secondmate-home summary classifies an actionable captain hold as `captain_de
 `bin/fm-bearings-snapshot.sh` places each captain hold by its `hold_bucket` and inspects no prose of its own.
 A `live` hold is a default Captain's Call entry.
 A `blocked`, `dated`, or `aged` hold leaves the default Captain's Call, renders as a Charted Next gate stating why - the blocking work, the `until <date>`, or the floored age - and contributes to the concrete `omitted[]` disclosure.
-`--all-decisions` reveals every captain hold available within the remote-summary bound and drops its gate, so an available hold is shown once and never twice.
+`--all-decisions` reveals every captain hold available within the remote-summary bound and drops its gate, so an available hold is never in both Captain's Call and Charted Next.
+An actively worked held task may also appear in Underway, which reports running work independently of those decision buckets.
 
 Three accepted limits remain deliberate:
 

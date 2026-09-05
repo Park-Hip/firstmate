@@ -31,13 +31,14 @@
 # Captain-hold placement follows the canonical snapshot's hold_bucket and
 # nothing else; this wrapper never inspects hold reason or body prose. The
 # buckets are total and mutually exclusive, so every captain hold appears in
-# exactly one place and none can fall through both. A "live" hold is a default
-# Captain's Call entry; "blocked", "dated", and "aged" leave the default
-# Captain's Call, render as Charted Next gates stating why (the blocking work,
-# the until date, or the floored age), and are counted in omitted[].
+# exactly one decision bucket and none can fall through both. An actively worked
+# held task may also appear in Underway. A "live" hold is a default Captain's Call
+# entry; "blocked", "dated", and "aged" leave the default Captain's Call, render
+# as Charted Next gates stating why (the blocking work, the until date, or the
+# floored age), and are counted in omitted[].
 # --all-decisions reveals every captain hold available within the bounded snapshot
-# and drops its gate, so a hold is never shown twice. Aging is a projection safety
-# net only; the durable
+# and drops its gate, so a hold is never in both Captain's Call and Charted Next.
+# Aging is a projection safety net only; the durable
 # deferral remains re-holding with --until.
 #
 # Main-home inventory validity comes from the canonical snapshot's main_inventory
