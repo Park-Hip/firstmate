@@ -339,9 +339,23 @@ MODEL=$(printf '%s' "$SNAP" | jq \
   def live_captain_call: .hold_bucket == "live";
   def projected_deferred_hold:
     .hold_bucket != null and .hold_bucket != "live";
+  def bounded_blocker_note($n):
+    ((.unresolved_blocker_ids // []) | map(tostring)) as $ids
+    | reduce range(0; $ids | length) as $i
+        ({shown:[]};
+         ($ids[0:($i + 1)]) as $candidate
+         | (($ids | length) - ($i + 1)) as $remaining
+         | ("blocked-by " + ($candidate | join(","))
+            + (if $remaining > 0 then " +\($remaining) more" else "" end)) as $rendered
+         | if ($rendered | length) <= $n then .shown = $candidate else . end)
+    | .shown as $shown
+    | (($ids | length) - ($shown | length)) as $remaining
+    | if ($shown | length) == 0 then "blocked-by +\($remaining) more"
+      else ("blocked-by " + ($shown | join(","))
+            + (if $remaining > 0 then " +\($remaining) more" else "" end))
+      end;
   def hold_note:
-    if .hold_bucket == "blocked" then
-      ("blocked-by " + ((.unresolved_blocker_ids // []) | join(",")))
+    if .hold_bucket == "blocked" then bounded_blocker_note(70)
     elif .hold_bucket == "dated" then ("until " + (.hold_until // "-"))
     elif .hold_bucket == "aged" and .hold_age_days != null then
       ("held " + (.hold_age_days | tostring) + "d")

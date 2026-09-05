@@ -2013,7 +2013,7 @@ test_working_captain_holds_keep_their_bucket_surfaces() {
   Captain hold set: 2026-07-10T00:00:00Z
 - [ ] working-live-two - Second working live call (repo: sample) (kind: captain) (hold: choose backup route) (hold-kind: captain)
   Captain hold set: 2026-07-10T00:00:00Z
-- [ ] working-blocked - Working blocked call blocked-by: missing-work (repo: sample) (kind: captain) (hold: choose blocked route) (hold-kind: captain)
+- [ ] working-blocked - Working blocked call blocked-by: blocker-alpha-123456789012345678901234567890 blocked-by: blocker-beta-123456789012345678901234567890 (repo: sample) (kind: captain) (hold: choose blocked route) (hold-kind: captain)
   Captain hold set: 2026-07-10T00:00:00Z
 - [ ] working-dated - Working dated call (repo: sample) (kind: captain) (hold: choose dated route) (hold-kind: captain) (hold-until: 2026-08-01)
   Captain hold set: 2026-07-10T00:00:00Z
@@ -2059,7 +2059,8 @@ EOF
           or .id == "working-mate/working-blocked" or .id == "working-mate/working-dated"
           or .id == "working-mate/working-aged")] | length) == 0
       and ([.gates[] | select(.id == "working-live" or .id == "working-live-two")] | length) == 0
-      and ([.gates[] | select(.id == "working-blocked" and .owner == "(main)" and (.reason | startswith("blocked-by missing-work")))] | length) == 1
+      and ([.gates[] | select(.id == "working-blocked" and .owner == "(main)"
+          and .blocked_by == "blocker-alpha-123456789012345678901234567890,blocker-beta-123456789012345678901234567890")] | length) == 1
       and ([.gates[] | select(.id == "working-dated" and .owner == "(main)" and (.reason | startswith("until 2026-08-01")))] | length) == 1
       and ([.gates[] | select(.id == "working-aged" and .owner == "(main)" and (.reason | startswith("held 40d")))] | length) == 1
       and ([.gates[] | select(.id == "working-blocked" and .owner == "working-mate")] | length) == 1
@@ -2079,6 +2080,10 @@ EOF
                     "working-mate/working-dated", "working-mate/working-aged"]))
       and ([.decisions_open[] | select(.id == "working-mate/working-live")] | length) == 1
       and ([.decisions_open[] | select(.id == "working-mate/working-live-two")] | length) == 1
+      and ([.decisions_open[] | select(
+          (.id == "working-blocked" or .id == "working-mate/working-blocked")
+          and (.summary | contains("blocked-by blocker-alpha-123456789012345678901234567890 +1 more"))
+          and (.summary | length) <= 90)] | length) == 2
       and ([.gates[] | select(.id == "working-live" or .id == "working-live-two" or .id == "working-blocked"
           or .id == "working-dated" or .id == "working-aged")] | length) == 0
   ' >/dev/null || fail "--all-decisions did not keep working holds Underway and reveal each gate-free: $expanded"
